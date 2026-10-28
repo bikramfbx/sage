@@ -17,8 +17,8 @@ class Settings(BaseSettings):
 
     # Loaded from the repo-root .env (NEBIUS_API_KEY, NEBIUS_BASE_URL, MODEL_ID)
     nebius_api_key: str = ""
-    nebius_base_url: str = "https://api.studio.nebius.ai/v1/"
-    model_id: str = "nvidia/nemotron-4-340b-instruct"
+    nebius_base_url: str = "https://api.studio.nebius.ai/v1"
+    model_id: str = "nvidia/Nemotron-3-Ultra-550b-a55b"
 
     model_config = SettingsConfigDict(
         env_file=("../.env", ".env"),

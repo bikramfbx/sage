@@ -1,6 +1,11 @@
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 from pydantic import BaseModel
+
+
+class ChatMessage(BaseModel):
+    role: Literal["user", "assistant", "system"]
+    content: str
 
 
 class MacroEntry(BaseModel):
@@ -47,7 +52,8 @@ class AgentState(BaseModel):
 
 
 class ChatRequest(BaseModel):
-    message: str
+    messages: Optional[List[ChatMessage]] = None
+    message: Optional[str] = None
     conversation_id: Optional[str] = None
 
 

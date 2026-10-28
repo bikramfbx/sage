@@ -116,13 +116,17 @@ export default function Home() {
     const text = input.trim();
     if (!text || sending) return;
     setInput("");
+    const history: { role: "user" | "assistant"; content: string }[] = [
+      ...messages.map(({ role, content }) => ({ role, content })),
+      { role: "user", content: text },
+    ];
     setMessages((m) => [...m, { role: "user", content: text }]);
     setSending(true);
     try {
       const r = await fetch(`${API}/api/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text }),
+        body: JSON.stringify({ messages: history }),
       });
       if (!r.ok) throw new Error(String(r.status));
       const data = await r.json();
