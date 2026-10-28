@@ -24,7 +24,7 @@ type AgentState = {
   documents: DocumentRef[];
 };
 type ChatMsg = {
-  role: "user" | "assistant";
+  role: "user" | "assistant" | "system";
   content: string;
   documents?: DocumentRef[];
 };
@@ -116,7 +116,7 @@ export default function Home() {
     const text = input.trim();
     if (!text || sending) return;
     setInput("");
-    const history: { role: "user" | "assistant"; content: string }[] = [
+    const history: { role: "user" | "assistant" | "system"; content: string }[] = [
       ...messages.map(({ role, content }) => ({ role, content })),
       { role: "user", content: text },
     ];

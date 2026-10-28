@@ -83,7 +83,24 @@ class MacroTracker:
             encoding="utf-8",
         )
 
-    def add_intake(self, label: str, calories: float, protein: float) -> Dict[str, Any]:
+    def add_intake(
+        self, label: str, calories: float, protein: float, dedupe: bool = True
+    ) -> Dict[str, Any]:
+        if dedupe:
+            normalized = " ".join(str(label).lower().split())
+            today = datetime.now().date().isoformat()
+            for existing in self.entries:
+                if not existing["time"].startswith(today):
+                    continue
+                same_label = " ".join(existing["label"].lower().split()) == normalized
+                same_macros = (
+                    abs(existing["calories"] - calories) < 1e-9
+                    and abs(existing["protein"] - protein) < 1e-9
+                )
+                if same_label and same_macros:
+                    duplicate = dict(existing)
+                    duplicate["duplicate"] = True
+                    return duplicate
         entry = {
             "label": label,
             "calories": calories,

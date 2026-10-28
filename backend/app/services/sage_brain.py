@@ -35,9 +35,17 @@ Personality: intelligent, articulate, empathetic, and sharp. You speak like a tr
 You help with academics, scheduling and timetables, nutrition and macro tracking, and finding things in the student's personal PDF library.
 
 Tools and when to use them:
-- log_macros: whenever the user mentions eating, food, meals, or macros. If they give exact numbers, use them as-is. If the meal is vague (e.g. "6 eggs, a sweet bun and a banana"), estimate calories and protein yourself from nutritional knowledge — reasonable ballparks are exactly what's wanted. Always pass a short food_description.
+- log_macros: ONLY when the student logs NEW food they actually ate ("I ate X", "had X for dinner", "add a meal"). If they give exact numbers, use them as-is. If the meal is vague (e.g. "6 eggs, a sweet bun and a banana"), estimate calories and protein yourself from nutritional knowledge — reasonable ballparks are exactly what's wanted. Always pass a short food_description. If the tool result reports duplicate: true, the meal was already recorded today — do not retry, just confirm it's tracked and give the current totals.
 - manage_schedule: whenever the user wants an event added, a weekly timetable imported, or asks what's coming up. Use add_event for single events and resolve relative dates like "tomorrow 5 PM" into ISO 8601 using the current time given below. Use bulk_import_timetable for pasted timetables. Use get_schedule when asked about plans. If a call fails, adjust and retry once.
 - search_docs: when the user asks about their notes, PDFs, lectures, syllabus, or anything likely to live inside their documents.
+
+Logging vs. asking (critical):
+- Strictly distinguish a LOG action from a QUERY action. A LOG records new food ("I ate X", "log my lunch"). A QUERY asks about food or macros already discussed or recorded ("how many calories were in that dinner?", "what are my macros?", "how much protein do I have left?").
+- Call log_macros ONLY on a LOG. For a QUERY, answer directly from the conversation history and the daily macro state below — never call log_macros, never re-estimate an already-logged meal.
+
+Response formatting:
+- When you log a meal, always state the itemized macros for THAT specific meal AND the updated daily total, e.g. "Dinner: ~810 kcal / 49 g protein. Daily Total: 2,385 / 2,500 kcal, 132 / 150 g protein."
+- When answering macro queries, use the exact recorded numbers from the daily state below.
 
 Behavior:
 - Decide on your own when tools are needed: converse freely when none are, and chain multiple tools in a single turn when the request calls for it.
@@ -45,7 +53,10 @@ Behavior:
 - Keep replies tight — a few sentences unless the user clearly wants depth. Plain text, minimal formatting.
 - If you don't know something, say so honestly rather than inventing it.
 
-Context: today is {date} ({weekday}), local time {time}. Tracked day: {macro_date}. Macros so far today: {cal} / {tcal} kcal, {protein} / {tprotein} g protein."""
+Context: today is {date} ({weekday}), local time {time}.
+Daily macro state for {macro_date}: {cal} / {tcal} kcal, {protein} / {tprotein} g protein so far.
+Already logged today (never re-log these): 
+{meals}"""
 
 TOOLS = [
     {
@@ -53,8 +64,10 @@ TOOLS = [
         "function": {
             "name": "log_macros",
             "description": (
-                "Log food the student ate and update daily macro tracking. "
-                "Estimate calories/protein from nutritional knowledge when the user is vague."
+                "Record NEW food the student actually ate and update daily macro "
+                "tracking. Estimate calories/protein from nutritional knowledge when "
+                "the user is vague. NEVER call this for questions about already-logged "
+                "food or macro status — answer those from context instead."
             ),
             "parameters": {
                 "type": "object",
@@ -124,7 +137,7 @@ TOOLS = [
 
 
 class SageBrain:
-    """Conversational orchestrator: Nemotron-4-340B via Nebius, with local
+    """Conversational orchestrator: Nemotron via Nebius, with local
     agent tools backed by the skills package. Falls back to a deterministic
     offline mode when the LLM is unreachable."""
 
@@ -153,12 +166,23 @@ class SageBrain:
 
     def _system_prompt(self) -> str:
         now = datetime.now()
-        totals = self.tracker.today_totals()
+        macro_state = self.tracker.state()
+        totals = macro_state["totals"]
+        entries = macro_state["entries"]
+        if entries:
+            meals = "\n".join(
+                f"- {e['time'][11:16]} · {e['label']} — "
+                f"{e['calories']:.0f} kcal, {e['protein']:.0f} g protein"
+                for e in entries
+            )
+        else:
+            meals = "(nothing logged yet)"
         return SYSTEM_PROMPT.format(
             date=now.strftime("%B %d, %Y"),
             weekday=now.strftime("%A"),
             time=now.strftime("%H:%M"),
-            macro_date=self.tracker.state()["date"],
+            macro_date=macro_state["date"],
+            meals=meals,
             cal=f"{totals['calories']:.0f}",
             tcal=f"{self.tracker.targets['calories']:.0f}",
             protein=f"{totals['protein']:.0f}",
@@ -176,9 +200,11 @@ class SageBrain:
                     protein=float(args.get("estimated_protein_g") or 0),
                 )
                 totals = self.tracker.today_totals()
-                collected["macros_touched"] = True
+                if not entry.get("duplicate"):
+                    collected["macros_touched"] = True
                 return {
                     "ok": True,
+                    "duplicate": bool(entry.get("duplicate")),
                     "logged": entry,
                     "today_totals": totals,
                     "targets": self.tracker.targets,
