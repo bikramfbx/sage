@@ -1,0 +1,75 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [4 0 R 6 0 R] /Count 2 >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+4 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 5 0 R >>
+endobj
+5 0 obj
+<< /Length 647 >>
+stream
+BT
+/F1 11 Tf
+54 730 Td
+18 TL
+(CS-302 Distributed Systems - Week 6 Lecture Notes) Tj T*
+() Tj T*
+(Topic: Raft Consensus Algorithm) Tj T*
+() Tj T*
+(Raft elects a single leader per term. Candidates request) Tj T*
+(votes from peers and win with a majority quorum.) Tj T*
+(Heartbeats flow from the leader to followers every) Tj T*
+(100-300ms. If a follower misses heartbeats it starts a) Tj T*
+(new election with an incremented term number.) Tj T*
+() Tj T*
+(Log replication: the leader appends entries and replicates) Tj T*
+(them to followers. An entry is committed once a majority) Tj T*
+(acknowledge it. Commit index advances monotonically.) Tj T*
+ET
+endstream
+endobj
+6 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 7 0 R >>
+endobj
+7 0 obj
+<< /Length 515 >>
+stream
+BT
+/F1 11 Tf
+54 730 Td
+18 TL
+(CS-302 Distributed Systems - Week 6 \(continued\)) Tj T*
+() Tj T*
+(Topic: Vector Clocks and Causality) Tj T*
+() Tj T*
+(Vector clocks capture causality across replicas. Each) Tj T*
+(process maintains a vector of counters, incremented on) Tj T*
+(local events and merged on message receipt.) Tj T*
+() Tj T*
+(Exam hint: expect a question comparing Raft leader) Tj T*
+(election with the failure detector approach in Paxos.) Tj T*
+(Review the midterm scope page on the course site.) Tj T*
+ET
+endstream
+endobj
+xref
+0 8
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000121 00000 n 
+0000000191 00000 n 
+0000000317 00000 n 
+0000001015 00000 n 
+0000001141 00000 n 
+trailer
+<< /Size 8 /Root 1 0 R >>
+startxref
+1707
+%%EOF

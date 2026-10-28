@@ -1,0 +1,20 @@
+[
+  {
+    "title": "CS-302 Distributed Systems midterm",
+    "date": "2026-11-04T09:00:00",
+    "location": "LT-5",
+    "course": "CS-302"
+  },
+  {
+    "title": "Nutrition check-in with campus coach",
+    "date": "2026-10-30T16:30:00",
+    "location": "Rec Center",
+    "course": null
+  },
+  {
+    "title": "SAGE capstone sync",
+    "date": "2026-11-11T14:00:00",
+    "location": "Lab 2",
+    "course": "CAPSTONE"
+  }
+]
