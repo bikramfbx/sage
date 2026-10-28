@@ -1,28 +1,30 @@
-from pydantic_settings import BaseSettings
+from pathlib import Path
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+BACKEND_DIR = Path(__file__).resolve().parents[2]
+REPO_ROOT = BACKEND_DIR.parent
 
 
 class Settings(BaseSettings):
     app_name: str = "SAGE"
     environment: str = "development"
     api_host: str = "0.0.0.0"
-    api_port: int = 8000
+    api_port: int = 8001
+    cors_origins: list[str] = ["http://localhost:3000"]
 
-    hermes_agent_url: str = "http://localhost:8080"
-    openshell_enabled: bool = True
+    sandbox_dir: Path = REPO_ROOT / "sandbox"
 
-    nemoclub_enabled: bool = True  # typo guard - use nemoclw? 
-    nemoclw_enabled: bool = True
-    nemoclw_proxy_url: str = "http://localhost:9090"
-    nemoclaw_enabled: bool = True
-    nemoclaw_proxy_url: str = "http://localhost:9090"
-
-    nebius_api_base_url: str = "https://api.nebius.com/v1"
+    # Loaded from the repo-root .env (NEBIUS_API_KEY, NEBIUS_BASE_URL, MODEL_ID)
     nebius_api_key: str = ""
-    nemotron_model: str = "nvidia/nemotron-4-340b"
+    nebius_base_url: str = "https://api.studio.nebius.ai/v1/"
+    model_id: str = "nvidia/nemotron-4-340b-instruct"
 
-    class Config:
-        env_file = ".env"
-        case_sensitive = False
+    model_config = SettingsConfigDict(
+        env_file=("../.env", ".env"),
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
 
 settings = Settings()
