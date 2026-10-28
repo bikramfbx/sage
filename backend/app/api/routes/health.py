@@ -1,0 +1,12 @@
+from fastapi import APIRouter
+
+router = APIRouter()
+
+
+@router.get("/health")
+async def health_check():
+    return {
+        "status": "healthy",
+        "service": "SAGE Backend Bridge",
+        "version": "0.1.0",
+    }
