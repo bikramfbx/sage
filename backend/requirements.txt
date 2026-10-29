@@ -7,3 +7,8 @@ pypdf==6.21.3
 openai==3.40.0
 pillow==13.0.0
 pytesseract==0.3.13
+ddgs==9.16.1
+numpy==2.5.4
+sympy==1.14.0
+scipy==1.18.1
+matplotlib==3.11.2
