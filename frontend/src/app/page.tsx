@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { AuroraHero } from "@/components/ui/hero";
 
 const API = "http://localhost:8001";
 const API_FALLBACK = "http://127.0.0.1:8001";
@@ -88,7 +89,7 @@ function formatEventDate(iso: string) {
   });
 }
 
-export default function Home() {
+function DashboardApp() {
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
@@ -435,7 +436,7 @@ export default function Home() {
   const macros = state.macros;
 
   return (
-    <div className="flex h-screen flex-col bg-zinc-950 text-zinc-100">
+    <div id="docs" className="flex h-screen flex-col bg-zinc-950 text-zinc-100 scroll-mt-0">
       <video ref={videoRef} className="hidden" autoPlay muted playsInline />
       <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-zinc-800 px-5">
         <div className="flex min-w-0 items-center gap-3">
@@ -529,7 +530,7 @@ export default function Home() {
       )}
 
       <div className="flex min-h-0 flex-1">
-        <main className="flex min-h-0 flex-1 flex-col border-r border-zinc-800">
+        <main id="chat" className="flex min-h-0 flex-1 flex-col border-r border-zinc-800 scroll-mt-0">
           <div ref={logRef} className="min-h-0 flex-1 overflow-y-auto p-5">
             {messages.length === 0 && (
               <div className="mt-24 text-center">
@@ -673,6 +674,37 @@ export default function Home() {
           </section>
         </aside>
       </div>
+    </div>
+  );
+}
+
+export default function SAGEHeroLanding() {
+  return (
+    <div>
+      <AuroraHero
+        eyebrow="AMBIENT STUDENT OS"
+        headline="SAGE"
+        description="Local-first ambient assistant for academic performance, physics computation, and personal progress."
+        displayFont="var(--font-instrument), 'Instrument Sans', sans-serif"
+        meta={["Persistent State", "Zero-Trust Storage", "Local-First Privacy"]}
+        action={
+          <a
+            href="#chat"
+            className="inline-flex h-11 items-center rounded-full bg-[#EDE8DF] px-7 font-[family-name:var(--font-mono,ui-monospace)] text-[11px] font-bold uppercase tracking-[0.18em] text-[#08080B] transition-transform duration-300 hover:-translate-y-0.5"
+          >
+            Launch SAGE
+          </a>
+        }
+        secondaryAction={
+          <a
+            href="#docs"
+            className="inline-flex h-11 items-center rounded-full border border-[#EDE8DF3d] px-7 font-[family-name:var(--font-mono,ui-monospace)] text-[11px] font-bold uppercase tracking-[0.18em] text-[#EDE8DF] transition-colors duration-300 hover:bg-white/5"
+          >
+            Documentation
+          </a>
+        }
+      />
+      <DashboardApp />
     </div>
   );
 }
