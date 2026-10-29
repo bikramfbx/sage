@@ -615,14 +615,13 @@ function DashboardApp() {
 }
 
 export default function SAGEHeroLanding() {
-  // PlayStation-style startup: 5s total. The logo card blooms in slowly,
-  // steams over the silk, starts fading at ~3.3s so it is fully gone by
-  // 4s, and the interface mounts at the 5s mark.
+  // cinematic 4s boot: right-aligned SAGE lockup flashes on instantly,
+  // scrolls up out of frame at 3.5s, interface rises at the 4s mark
   const [textVisible, setTextVisible] = useState(true);
   const [interfaceReady, setInterfaceReady] = useState(false);
   useEffect(() => {
-    const a = setTimeout(() => setTextVisible(false), 3300);
-    const b = setTimeout(() => setInterfaceReady(true), 5000);
+    const a = setTimeout(() => setTextVisible(false), 3500);
+    const b = setTimeout(() => setInterfaceReady(true), 4000);
     return () => {
       clearTimeout(a);
       clearTimeout(b);
@@ -634,55 +633,34 @@ export default function SAGEHeroLanding() {
       <div className="fixed inset-0 z-0">
         <AuroraHero eyebrow="" headline="" description="" meta={[]} />
         <motion.div
-          initial={{ opacity: 0, scale: 0.96, filter: "blur(14px)" }}
-          animate={
-            textVisible
-              ? { opacity: 1, scale: 1, filter: "blur(0px)" }
-              : { opacity: 0, scale: 1.07, filter: "blur(12px)" }
-          }
+          initial={{ y: 0 }}
+          animate={textVisible ? { y: 0 } : { y: "-115%" }}
           transition={
             textVisible
-              ? { duration: 1.7, delay: 0.35, ease: [0.16, 1, 0.3, 1] }
-              : { duration: 1.0, ease: "easeInOut" }
+              ? { duration: 0 }
+              : { duration: 0.62, ease: [0.65, 0, 0.35, 1] }
           }
           aria-hidden={!textVisible}
-          className="pointer-events-none absolute inset-0 z-10 grid place-items-center"
+          className="pointer-events-none absolute inset-0 z-10 flex flex-col items-end justify-center pr-8 text-right sm:pr-14 lg:pr-24"
         >
-          <div className="-mt-14 px-6 text-center">
-            <motion.p
-              className="font-[family-name:var(--font-mono,ui-monospace)] text-xs uppercase tracking-[0.55em] text-emerald-300/70 sm:text-sm"
-              initial={{ opacity: 0, letterSpacing: "0.2em" }}
-              animate={
-                textVisible
-                  ? { opacity: 1, letterSpacing: "0.55em" }
-                  : { opacity: 0 }
-              }
-              transition={{ duration: 1.6, delay: 0.7, ease: "easeOut" }}
-            >
-              ambient student os
-            </motion.p>
-            <h1
-              className="mt-10 text-[#EDE8DF]"
-              style={{
-                fontFamily:
-                  "var(--font-instrument), 'Instrument Sans', sans-serif",
-                fontWeight: 500,
-                fontSize: "clamp(4.5rem, 13vw, 13rem)",
-                lineHeight: 1.04,
-                letterSpacing: "-0.03em",
-              }}
-            >
-              Welcome to SAGE
-            </h1>
-            <motion.p
-              className="mt-12 font-[family-name:var(--font-mono,ui-monospace)] text-[11px] tracking-[0.3em] text-zinc-400/70 sm:text-xs"
-              initial={{ opacity: 0 }}
-              animate={textVisible ? { opacity: 1 } : { opacity: 0 }}
-              transition={{ duration: 1.2, delay: 1.1, ease: "easeOut" }}
-            >
-              initializing ambient interface…
-            </motion.p>
-          </div>
+          <p className="font-[family-name:var(--font-mono,ui-monospace)] text-[10px] uppercase tracking-[0.34em] text-emerald-300/70 sm:text-[11px]">
+            Student Assistant for Growth and Education
+          </p>
+          <h1
+            className="mt-3 text-[#EDE8DF]"
+            style={{
+              fontFamily: "var(--font-instrument), 'Instrument Sans', sans-serif",
+              fontWeight: 600,
+              fontSize: "clamp(4.5rem, 14vw, 13rem)",
+              lineHeight: 1.02,
+              letterSpacing: "-0.03em",
+            }}
+          >
+            SAGE
+          </h1>
+          <p className="mt-4 font-[family-name:var(--font-mono,ui-monospace)] text-[10px] tracking-[0.3em] text-zinc-400/70 sm:text-xs">
+            initializing ambient interface…
+          </p>
         </motion.div>
       </div>
       {interfaceReady && (
