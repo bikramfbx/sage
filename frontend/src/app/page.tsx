@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { motion } from "motion/react";
 import { AuroraHero } from "@/components/ui/hero";
 
 const API = "http://localhost:8001";
@@ -64,7 +65,7 @@ function ProgressBar({
           {Math.round(value)} <span className="text-zinc-500">/ {Math.round(max)} {unit}</span>
         </span>
       </div>
-      <div className="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-zinc-800">
+      <div className="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-white/10">
         <div
           className={`h-full rounded-full transition-all duration-500 ${barClass}`}
           style={{ width: `${pct}%` }}
@@ -436,275 +437,206 @@ function DashboardApp() {
   const macros = state.macros;
 
   return (
-    <div id="docs" className="flex h-screen flex-col bg-zinc-950 text-zinc-100 scroll-mt-0">
+    <div id="docs" className="flex min-h-screen w-full items-stretch gap-5 px-4 py-5 text-zinc-100 sm:px-6">
       <video ref={videoRef} className="hidden" autoPlay muted playsInline />
-      <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-zinc-800 px-5">
-        <div className="flex min-w-0 items-center gap-3">
-          <span className="font-mono text-sm font-semibold tracking-widest text-emerald-400">
-            SAGE
-          </span>
-          <span className="hidden truncate text-xs text-zinc-500 lg:inline">
-            Student Assistant for Growth and Education
-          </span>
-        </div>
-
-        <div className="flex items-center gap-2 font-mono text-xs">
-          {!streaming ? (
-            <button
-              onClick={selectStudyWindow}
-              className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-1 text-emerald-300 transition-colors hover:bg-emerald-500/20"
-              title="Share a window for the Study Copilot"
-            >
-              Select Study Window
-            </button>
-          ) : (
-            <button
-              onClick={endStudyStream}
-              className="rounded-lg border border-red-500/40 bg-red-500/10 px-2.5 py-1 text-red-300 transition-colors hover:bg-red-500/20"
-            >
-              Stop Stream
-            </button>
-          )}
-          <button
-            onClick={() => void perceive("manual_snap")}
-            disabled={!streaming || perceiving}
-            title="Capture the current window and analyze it now"
-            className="rounded-lg border border-zinc-800 px-2.5 py-1 text-zinc-300 transition-colors hover:border-emerald-500/40 hover:text-emerald-300 disabled:opacity-40"
-          >
-            {perceiving ? "analyzing…" : "Snap & Analyze"}
-          </button>
-          <label
-            className="hidden cursor-pointer select-none items-center gap-1.5 text-zinc-400 xl:flex"
-            title="Scan the shared window every 30s for assignment deadlines"
-          >
-            <input
-              type="checkbox"
-              className="accent-emerald-500"
-              checked={autoDetect}
-              disabled={!streaming}
-              onChange={(e) => setAutoDetect(e.target.checked)}
-            />
-            Auto-Detect Assignments
-          </label>
-          {streaming && (
-            <span
-              className="hidden max-w-40 truncate rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-emerald-300 md:inline"
-              title={streamLabel}
-            >
-              Active Stream [{streamLabel}]
-            </span>
-          )}
-        </div>
-
-        <div className="flex shrink-0 items-center gap-4 font-mono text-xs text-zinc-500">
-          <span className="flex items-center gap-2">
-            <span
-              className={`h-2 w-2 rounded-full ${
-                online === null
-                  ? "animate-pulse bg-zinc-500"
-                  : online
-                    ? "bg-emerald-400"
-                    : "bg-red-500"
-              }`}
-            />
-            {online === null
-              ? "connecting"
+      <div className="fixed right-5 top-5 z-30 flex items-center gap-2 rounded-full border border-white/10 bg-black/30 px-3 py-1.5 font-[family-name:var(--font-mono,ui-monospace)] text-[10px] uppercase tracking-[0.22em] text-zinc-400 backdrop-blur-md">
+        <span
+          className={`h-1.5 w-1.5 rounded-full ${
+            online === null
+              ? "animate-pulse bg-zinc-400"
               : online
-                ? "backend online :8001"
-                : "backend offline"}
-          </span>
-          <button
-            onClick={clearHistory}
-            title="Clear chat history and start a fresh session"
-            className="rounded-lg border border-zinc-800 px-2.5 py-1 text-xs text-zinc-400 transition-colors hover:border-red-500/60 hover:text-red-400"
-          >
-            Clear History
-          </button>
-        </div>
-      </header>
+                ? "bg-emerald-400"
+                : "bg-red-400"
+          }`}
+        />
+        {online === null ? "connecting" : online ? "sage online" : "sage offline"}
+      </div>
 
       {perceptionStatus && (
-        <div className="pointer-events-none fixed bottom-4 left-4 z-50 rounded-lg border border-zinc-800 bg-zinc-900/95 px-3 py-2 font-mono text-xs text-zinc-300">
+        <div className="pointer-events-none fixed bottom-4 left-4 z-50 rounded-xl border border-white/10 bg-black/40 px-3 py-2 font-[family-name:var(--font-mono,ui-monospace)] text-xs text-zinc-200 backdrop-blur-md">
           perception: {perceptionStatus}
         </div>
       )}
 
-      <div className="flex min-h-0 flex-1">
-        <main id="chat" className="flex min-h-0 flex-1 flex-col border-r border-zinc-800 scroll-mt-0">
-          <div ref={logRef} className="min-h-0 flex-1 overflow-y-auto p-5">
-            {messages.length === 0 && (
-              <div className="mt-24 text-center">
-                <p className="font-mono text-2xl text-zinc-700">$ ask sage_</p>
-                <p className="mt-3 text-sm text-zinc-500">
-                  Log a meal: &quot;ate 600 kcal with 40g protein chicken rice&quot;
-                  <br />
-                  or search your notes: &quot;what do my lecture notes say about raft?&quot;
-                </p>
+      <main
+        id="chat"
+        className="relative z-10 flex min-h-[calc(100vh-2.5rem)] flex-1 flex-col overflow-hidden rounded-3xl border border-white/10 bg-white/[0.045] shadow-[0_10px_70px_rgba(0,0,0,0.45)] backdrop-blur-2xl"
+      >
+        <div className="flex h-11 shrink-0 items-center border-b border-white/[0.07] px-5">
+          <span className="font-[family-name:var(--font-mono,ui-monospace)] text-[10px] uppercase tracking-[0.35em] text-emerald-300/80">
+            sage_
+          </span>
+        </div>
+
+        <div ref={logRef} className="min-h-0 flex-1 overflow-y-auto p-5">
+          {messages.length === 0 && (
+            <div className="mt-24 text-center">
+              <p className="font-[family-name:var(--font-mono,ui-monospace)] text-2xl text-zinc-500/70">$ ask sage_</p>
+              <p className="mt-3 text-sm text-zinc-400/80">
+                Log a meal: &quot;ate 600 kcal with 40g protein chicken rice&quot;
+                <br />
+                or search your notes: &quot;what do my lecture notes say about raft?&quot;
+              </p>
+            </div>
+          )}
+          <div className="mx-auto flex max-w-2xl flex-col gap-4">
+            {messages.map((m, i) => (
+              <div key={i} className={m.role === "user" ? "flex justify-end" : ""}>
+                <div
+                  className={
+                    m.role === "user"
+                      ? "max-w-[80%] rounded-2xl rounded-br-sm border border-emerald-300/25 bg-emerald-400/15 px-4 py-2.5 text-sm text-emerald-50 backdrop-blur-md"
+                      : "max-w-[85%] rounded-2xl rounded-bl-sm border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-zinc-200 backdrop-blur-md"
+                  }
+                >
+                  <p className="whitespace-pre-wrap">{m.content}</p>
+                  {m.role === "assistant" && m.documents && m.documents.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1.5 border-t border-white/10 pt-2">
+                      {m.documents.map((d, j) => (
+                        <span
+                          key={j}
+                          className="rounded bg-white/10 px-1.5 py-0.5 font-[family-name:var(--font-mono,ui-monospace)] text-[10px] text-zinc-300/80"
+                        >
+                          {d.document}
+                          {d.page ? `:p${d.page}` : ""}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+            {sending && (
+              <div className="flex items-center gap-2.5 px-1">
+                <div className="flex gap-1">
+                  <span className="h-2 w-2 animate-bounce rounded-full bg-emerald-300/90 [animation-delay:0ms]" />
+                  <span className="h-2 w-2 animate-bounce rounded-full bg-emerald-300/90 [animation-delay:150ms]" />
+                  <span className="h-2 w-2 animate-bounce rounded-full bg-emerald-300/90 [animation-delay:300ms]" />
+                </div>
+                <span className="font-[family-name:var(--font-mono,ui-monospace)] text-xs text-zinc-500">
+                  sage is thinking
+                </span>
               </div>
             )}
-            <div className="mx-auto flex max-w-2xl flex-col gap-4">
-              {messages.map((m, i) => (
-                <div key={i} className={m.role === "user" ? "flex justify-end" : ""}>
-                  <div
-                    className={
-                      m.role === "user"
-                        ? "max-w-[80%] rounded-2xl rounded-br-sm bg-emerald-600/90 px-4 py-2.5 text-sm text-white"
-                        : "max-w-[85%] rounded-2xl rounded-bl-sm border border-zinc-800 bg-zinc-900 px-4 py-2.5 text-sm text-zinc-200"
-                    }
-                  >
-                    <p className="whitespace-pre-wrap">{m.content}</p>
-                    {m.role === "assistant" && m.documents && m.documents.length > 0 && (
-                      <div className="mt-2 flex flex-wrap gap-1.5 border-t border-zinc-800 pt-2">
-                        {m.documents.map((d, j) => (
-                          <span
-                            key={j}
-                            className="rounded bg-zinc-800 px-1.5 py-0.5 font-mono text-[10px] text-zinc-400"
-                          >
-                            {d.document}
-                            {d.page ? `:p${d.page}` : ""}
-                          </span>
-                        ))}
-                      </div>
+          </div>
+        </div>
+
+        <div className="shrink-0 border-t border-white/[0.07] bg-white/[0.03] p-4">
+          <div className="mx-auto flex max-w-2xl gap-2">
+            <input
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && send()}
+              placeholder="Message SAGE…"
+              className="flex-1 rounded-xl border border-white/10 bg-white/[0.06] px-4 py-2.5 text-sm text-zinc-100 outline-none backdrop-blur-md placeholder:text-zinc-500 focus:border-emerald-300/50"
+            />
+            <button
+              onClick={send}
+              disabled={sending || !input.trim()}
+              className="rounded-xl bg-emerald-400/90 px-5 py-2.5 text-sm font-semibold text-[#08130d] transition-colors hover:bg-emerald-300 disabled:opacity-40"
+            >
+              Send
+            </button>
+          </div>
+        </div>
+      </main>
+
+      <aside className="hidden w-[21rem] shrink-0 flex-col gap-5 overflow-y-auto overflow-x-hidden pb-1 lg:flex">
+        <section className="rounded-3xl border border-white/10 bg-white/[0.045] p-4 backdrop-blur-2xl">
+          <h2 className="mb-3 font-[family-name:var(--font-mono,ui-monospace)] text-[10px] uppercase tracking-[0.28em] text-zinc-400">
+            Macro Tracker
+            <span className="float-right normal-case text-zinc-500/80">{macros.date}</span>
+          </h2>
+          <div className="flex flex-col gap-4">
+            <ProgressBar
+              label="Calories"
+              unit="kcal"
+              value={macros.totals.calories}
+              max={macros.targets.calories}
+              barClass="bg-amber-300"
+            />
+            <ProgressBar
+              label="Protein"
+              unit="g"
+              value={macros.totals.protein}
+              max={macros.targets.protein}
+              barClass="bg-emerald-300"
+            />
+          </div>
+          {macros.entries.length > 0 && (
+            <ul className="mt-4 space-y-1.5 border-t border-white/10 pt-3">
+              {macros.entries.map((e, i) => (
+                <li key={i} className="flex justify-between gap-2 text-xs">
+                  <span className="truncate text-zinc-300/90">{e.label}</span>
+                  <span className="shrink-0 font-[family-name:var(--font-mono,ui-monospace)] text-zinc-400/90">
+                    {Math.round(e.calories)}kcal · {Math.round(e.protein)}p
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        <section className="rounded-3xl border border-white/10 bg-white/[0.045] p-4 backdrop-blur-2xl">
+          <h2 className="mb-3 font-[family-name:var(--font-mono,ui-monospace)] text-[10px] uppercase tracking-[0.28em] text-zinc-400">
+            Upcoming Schedule
+          </h2>
+          {state.schedule.length === 0 ? (
+            <p className="text-xs text-zinc-500/80">No upcoming events.</p>
+          ) : (
+            <div className="flex flex-col gap-2.5">
+              {state.schedule.map((ev, i) => (
+                <div
+                  key={i}
+                  className="rounded-2xl border border-white/10 bg-black/25 p-3 transition-colors hover:border-white/20"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="text-sm font-medium text-zinc-100">{ev.title}</p>
+                    {ev.course && (
+                      <span className="shrink-0 rounded bg-white/10 px-1.5 py-0.5 font-[family-name:var(--font-mono,ui-monospace)] text-[10px] text-emerald-300/90">
+                        {ev.course}
+                      </span>
                     )}
                   </div>
+                  <p className="mt-1.5 font-[family-name:var(--font-mono,ui-monospace)] text-xs text-zinc-400/90">
+                    {formatEventDate(ev.date)}
+                  </p>
+                  {ev.location && (
+                    <p className="mt-0.5 text-xs text-zinc-500">{ev.location}</p>
+                  )}
                 </div>
               ))}
-              {sending && (
-                <div className="flex items-center gap-2.5 px-1">
-                  <div className="flex gap-1">
-                    <span className="h-2 w-2 animate-bounce rounded-full bg-emerald-400 [animation-delay:0ms]" />
-                    <span className="h-2 w-2 animate-bounce rounded-full bg-emerald-400 [animation-delay:150ms]" />
-                    <span className="h-2 w-2 animate-bounce rounded-full bg-emerald-400 [animation-delay:300ms]" />
-                  </div>
-                  <span className="font-mono text-xs text-zinc-600">
-                    sage is thinking
-                  </span>
-                </div>
-              )}
             </div>
-          </div>
-
-          <div className="shrink-0 border-t border-zinc-800 p-4">
-            <div className="mx-auto flex max-w-2xl gap-2">
-              <input
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && send()}
-                placeholder="Message SAGE…"
-                className="flex-1 rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-2.5 text-sm outline-none placeholder:text-zinc-600 focus:border-emerald-500/60"
-              />
-              <button
-                onClick={send}
-                disabled={sending || !input.trim()}
-                className="rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-emerald-500 disabled:opacity-40"
-              >
-                Send
-              </button>
-            </div>
-          </div>
-        </main>
-
-        <aside className="hidden w-80 shrink-0 flex-col gap-4 overflow-y-auto bg-zinc-950 p-4 lg:flex">
-          <section className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4">
-            <h2 className="mb-3 font-mono text-xs uppercase tracking-wider text-zinc-500">
-              Macro Tracker
-              <span className="float-right normal-case text-zinc-600">{macros.date}</span>
-            </h2>
-            <div className="flex flex-col gap-4">
-              <ProgressBar
-                label="Calories"
-                unit="kcal"
-                value={macros.totals.calories}
-                max={macros.targets.calories}
-                barClass="bg-amber-400"
-              />
-              <ProgressBar
-                label="Protein"
-                unit="g"
-                value={macros.totals.protein}
-                max={macros.targets.protein}
-                barClass="bg-emerald-400"
-              />
-            </div>
-            {macros.entries.length > 0 && (
-              <ul className="mt-4 space-y-1.5 border-t border-zinc-800 pt-3">
-                {macros.entries.map((e, i) => (
-                  <li key={i} className="flex justify-between gap-2 text-xs">
-                    <span className="truncate text-zinc-400">{e.label}</span>
-                    <span className="shrink-0 font-mono text-zinc-500">
-                      {Math.round(e.calories)}kcal · {Math.round(e.protein)}p
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-
-          <section className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4">
-            <h2 className="mb-3 font-mono text-xs uppercase tracking-wider text-zinc-500">
-              Upcoming Schedule
-            </h2>
-            {state.schedule.length === 0 ? (
-              <p className="text-xs text-zinc-600">No upcoming events.</p>
-            ) : (
-              <div className="flex flex-col gap-2.5">
-                {state.schedule.map((ev, i) => (
-                  <div
-                    key={i}
-                    className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 transition-colors hover:border-zinc-700"
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <p className="text-sm font-medium text-zinc-200">{ev.title}</p>
-                      {ev.course && (
-                        <span className="shrink-0 rounded bg-zinc-800 px-1.5 py-0.5 font-mono text-[10px] text-emerald-400">
-                          {ev.course}
-                        </span>
-                      )}
-                    </div>
-                    <p className="mt-1.5 font-mono text-xs text-zinc-500">
-                      {formatEventDate(ev.date)}
-                    </p>
-                    {ev.location && (
-                      <p className="mt-0.5 text-xs text-zinc-600">{ev.location}</p>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
-        </aside>
-      </div>
+          )}
+        </section>
+      </aside>
     </div>
   );
 }
 
 export default function SAGEHeroLanding() {
+  // the interface blooms in over the aurora background after 3 seconds
+  const [interfaceReady, setInterfaceReady] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setInterfaceReady(true), 3000);
+    return () => clearTimeout(t);
+  }, []);
+
   return (
-    <div>
-      <AuroraHero
-        eyebrow="AMBIENT STUDENT OS"
-        headline="SAGE"
-        description="Local-first ambient assistant for academic performance, physics computation, and personal progress."
-        displayFont="var(--font-instrument), 'Instrument Sans', sans-serif"
-        meta={["Persistent State", "Zero-Trust Storage", "Local-First Privacy"]}
-        action={
-          <a
-            href="#chat"
-            className="inline-flex h-11 items-center rounded-full bg-[#EDE8DF] px-7 font-[family-name:var(--font-mono,ui-monospace)] text-[11px] font-bold uppercase tracking-[0.18em] text-[#08080B] transition-transform duration-300 hover:-translate-y-0.5"
-          >
-            Launch SAGE
-          </a>
-        }
-        secondaryAction={
-          <a
-            href="#docs"
-            className="inline-flex h-11 items-center rounded-full border border-[#EDE8DF3d] px-7 font-[family-name:var(--font-mono,ui-monospace)] text-[11px] font-bold uppercase tracking-[0.18em] text-[#EDE8DF] transition-colors duration-300 hover:bg-white/5"
-          >
-            Documentation
-          </a>
-        }
-      />
-      <DashboardApp />
+    <div className="relative min-h-screen bg-[#08080B]">
+      <div className="fixed inset-0 z-0">
+        <AuroraHero eyebrow="" headline="" description="" meta={[]} />
+      </div>
+      {interfaceReady && (
+        <motion.div
+          initial={{ opacity: 0, y: 30, scale: 0.985 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          transition={{ type: "spring", stiffness: 84, damping: 18 }}
+          className="relative z-10"
+        >
+          <DashboardApp />
+        </motion.div>
+      )}
     </div>
   );
 }
