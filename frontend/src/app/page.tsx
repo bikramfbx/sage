@@ -631,7 +631,14 @@ export default function SAGEHeroLanding() {
   return (
     <div className="relative h-screen overflow-hidden bg-[#08080B]">
       <div className="fixed inset-0 z-0">
-        <AuroraHero eyebrow="" headline="" description="" meta={[]} />
+        {/* pink -> cyan -> green iridescent ramp (no gold/brown bands) */}
+        <AuroraHero
+          eyebrow=""
+          headline=""
+          description=""
+          meta={[]}
+          colors={["#E34FA5", "#38D5F2", "#4AE3A2"]}
+        />
         <motion.div
           initial={{ y: 0 }}
           animate={textVisible ? { y: 0 } : { y: "-115%" }}
