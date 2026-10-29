@@ -11,6 +11,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from skills.sandbox_guard import assert_in_sandbox
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_STATE_PATH = REPO_ROOT / "sandbox" / "state" / "schedule.json"
 DEFAULT_SEED_PATH = REPO_ROOT / "sandbox" / "calendar" / "events.json"
@@ -86,8 +88,8 @@ class ScheduleManager:
         state_path: Path = DEFAULT_STATE_PATH,
         seed_path: Path = DEFAULT_SEED_PATH,
     ):
-        self.state_path = Path(state_path)
-        self.seed_path = Path(seed_path)
+        self.state_path = assert_in_sandbox(state_path)
+        self.seed_path = assert_in_sandbox(seed_path)
         self.events: List[Dict[str, Any]] = []
         self._load()
 

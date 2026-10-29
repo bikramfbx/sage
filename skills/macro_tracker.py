@@ -10,6 +10,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from skills.sandbox_guard import assert_in_sandbox
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_STATE_PATH = REPO_ROOT / "sandbox" / "state" / "macros.json"
 
@@ -61,7 +63,7 @@ def parse_food_message(text: str) -> Optional[Dict[str, Any]]:
 
 class MacroTracker:
     def __init__(self, state_path: Path = DEFAULT_STATE_PATH, targets: Optional[Dict[str, int]] = None):
-        self.state_path = Path(state_path)
+        self.state_path = assert_in_sandbox(state_path)
         self.targets = dict(DEFAULT_TARGETS if targets is None else targets)
         self.entries: List[Dict[str, Any]] = []
         self._load()

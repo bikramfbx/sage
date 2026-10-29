@@ -45,3 +45,18 @@ The repo-root `.env` supplies `NEBIUS_API_KEY`, `NEBIUS_BASE_URL`, and
 - The agent loop, tool registry, and SAGE persona prompt are all in
   `sage_brain.py`; NVIDIA OpenShell / NemoClaw sandboxing wraps this
   process at the infrastructure layer.
+
+## Security model
+
+- Filesystem: all skill file I/O is resolved and checked for containment
+  inside `sandbox/` (`skills/sandbox_guard.py`) — traversal and absolute
+  escapes raise `ValueError` before any read/write.
+- Prompt injection: extracted PDF text is sanitized (control chars
+  stripped, angle brackets HTML-escaped) and LLM-facing tool results are
+  wrapped in `<tool_results>` / `<document_context>` delimiters; the
+  system prompt declares all such content untrusted. The agent loop is
+  hard-capped at 5 rounds.
+- API: CORS is a strict allowlist (`localhost:3000`, `127.0.0.1:3000`),
+  all 5xx responses are generic, and stack traces / secrets stay in the
+  server log only. Chat payloads are length-limited via Pydantic.
+- Verify with `venv/bin/python scripts/security_checks.py`.

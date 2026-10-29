@@ -8,8 +8,16 @@ while only the recent turns are replayed verbatim.
 """
 
 import json
+import sys
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from skills.sandbox_guard import assert_in_sandbox  # noqa: E402
 
 COMPRESS_THRESHOLD_TURNS = 10
 KEEP_TURNS_VERBATIM = 5
@@ -17,9 +25,9 @@ KEEP_TURNS_VERBATIM = 5
 
 class MemoryManager:
     def __init__(self, state_dir):
-        self.state_dir = state_dir
-        self.history_path = state_dir / "chat_history.json"
-        self.summary_path = state_dir / "context_summary.json"
+        self.state_dir = assert_in_sandbox(state_dir)
+        self.history_path = assert_in_sandbox(state_dir / "chat_history.json")
+        self.summary_path = assert_in_sandbox(state_dir / "context_summary.json")
 
     def messages(self) -> List[Dict[str, Any]]:
         if not self.history_path.exists():
