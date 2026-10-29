@@ -439,7 +439,7 @@ function DashboardApp() {
   return (
     <div id="docs" className="flex h-screen w-full overflow-hidden items-stretch gap-5 px-4 py-5 text-zinc-100 sm:px-6">
       <video ref={videoRef} className="hidden" autoPlay muted playsInline />
-      <div className="fixed right-5 top-5 z-30 flex items-center gap-2 rounded-full border border-white/10 bg-black/20 px-3 py-1.5 font-[family-name:var(--font-mono,ui-monospace)] text-[10px] uppercase tracking-[0.22em] text-zinc-400 backdrop-blur-md">
+      <div className="fixed right-5 top-5 z-30 flex items-center gap-2 rounded-full border border-white/10 bg-black/35 px-3 py-1.5 font-[family-name:var(--font-mono,ui-monospace)] text-[10px] uppercase tracking-[0.22em] text-zinc-400 backdrop-blur-md">
         <span
           className={`h-1.5 w-1.5 rounded-full ${
             online === null
@@ -453,14 +453,14 @@ function DashboardApp() {
       </div>
 
       {perceptionStatus && (
-        <div className="pointer-events-none fixed bottom-4 left-4 z-50 rounded-xl border border-white/10 bg-black/40 px-3 py-2 font-[family-name:var(--font-mono,ui-monospace)] text-xs text-zinc-200 backdrop-blur-md">
+        <div className="pointer-events-none fixed bottom-4 left-4 z-50 rounded-xl border border-white/10 bg-black/55 px-3 py-2 font-[family-name:var(--font-mono,ui-monospace)] text-xs text-zinc-200 backdrop-blur-md">
           perception: {perceptionStatus}
         </div>
       )}
 
       <main
         id="chat"
-        className="relative z-10 flex h-full min-h-0 flex-1 flex-col overflow-hidden rounded-3xl border border-white/10 bg-white/[0.02] shadow-[0_10px_70px_rgba(0,0,0,0.4)] backdrop-blur-lg"
+        className="relative z-10 flex h-full min-h-0 flex-1 flex-col overflow-hidden rounded-3xl border border-white/10 bg-white/[0.07] shadow-[0_10px_70px_rgba(0,0,0,0.45)] backdrop-blur-xl"
       >
         <div className="flex h-11 shrink-0 items-center border-b border-white/[0.07] px-5">
           <span className="font-[family-name:var(--font-mono,ui-monospace)] text-[10px] uppercase tracking-[0.35em] text-emerald-300/80">
@@ -486,7 +486,7 @@ function DashboardApp() {
                   className={
                     m.role === "user"
                       ? "max-w-[80%] rounded-2xl rounded-br-sm border border-emerald-300/25 bg-emerald-400/15 px-4 py-2.5 text-sm text-emerald-50 backdrop-blur-md"
-                      : "max-w-[85%] rounded-2xl rounded-bl-sm border border-white/10 bg-black/15 px-4 py-2.5 text-sm text-zinc-200 backdrop-blur-sm"
+                      : "max-w-[85%] rounded-2xl rounded-bl-sm border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-zinc-200 backdrop-blur-sm"
                   }
                 >
                   <p className="whitespace-pre-wrap">{m.content}</p>
@@ -528,7 +528,7 @@ function DashboardApp() {
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && send()}
               placeholder="Message SAGE…"
-              className="flex-1 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2.5 text-sm text-zinc-100 outline-none backdrop-blur-md placeholder:text-zinc-500 focus:border-emerald-300/50"
+              className="flex-1 rounded-xl border border-white/10 bg-white/[0.08] px-4 py-2.5 text-sm text-zinc-100 outline-none backdrop-blur-md placeholder:text-zinc-500 focus:border-emerald-300/50"
             />
             <button
               onClick={send}
@@ -542,7 +542,7 @@ function DashboardApp() {
       </main>
 
       <aside className="hidden w-[21rem] shrink-0 flex-col gap-5 overflow-y-auto overflow-x-hidden pb-1 lg:flex">
-        <section className="rounded-3xl border border-white/10 bg-white/[0.02] p-4 backdrop-blur-lg">
+        <section className="rounded-3xl border border-white/10 bg-white/[0.07] p-4 backdrop-blur-xl">
           <h2 className="mb-3 font-[family-name:var(--font-mono,ui-monospace)] text-[10px] uppercase tracking-[0.28em] text-zinc-400">
             Macro Tracker
             <span className="float-right normal-case text-zinc-500/80">{macros.date}</span>
@@ -577,7 +577,7 @@ function DashboardApp() {
           )}
         </section>
 
-        <section className="rounded-3xl border border-white/10 bg-white/[0.02] p-4 backdrop-blur-lg">
+        <section className="rounded-3xl border border-white/10 bg-white/[0.07] p-4 backdrop-blur-xl">
           <h2 className="mb-3 font-[family-name:var(--font-mono,ui-monospace)] text-[10px] uppercase tracking-[0.28em] text-zinc-400">
             Upcoming Schedule
           </h2>
@@ -588,7 +588,7 @@ function DashboardApp() {
               {state.schedule.map((ev, i) => (
                 <div
                   key={i}
-                  className="rounded-2xl border border-white/10 bg-black/15 p-3 transition-colors hover:border-white/20"
+                  className="rounded-2xl border border-white/10 bg-black/30 p-3 transition-colors hover:border-white/20"
                 >
                   <div className="flex items-start justify-between gap-2">
                     <p className="text-sm font-medium text-zinc-100">{ev.title}</p>
@@ -631,13 +631,13 @@ export default function SAGEHeroLanding() {
   return (
     <div className="relative h-screen overflow-hidden bg-[#08080B]">
       <div className="fixed inset-0 z-0">
-        {/* pink -> cyan -> green iridescent ramp (no gold/brown bands) */}
+        {/* green -> cyan -> teal iridescent ramp */}
         <AuroraHero
           eyebrow=""
           headline=""
           description=""
           meta={[]}
-          colors={["#E34FA5", "#38D5F2", "#4AE3A2"]}
+          colors={["#3DDC97", "#38CFF2", "#2DD4BF"]}
         />
         <motion.div
           initial={{ y: 0 }}
