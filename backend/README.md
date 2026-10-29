@@ -36,6 +36,15 @@ The repo-root `.env` supplies `NEBIUS_API_KEY`, `NEBIUS_BASE_URL`, and
 - `GET /api/history` — persisted conversation turns for dashboard restore
 - `DELETE /api/history` — wipe chat history + compressed summary (macros
   and schedule state are untouched)
+- `POST /api/perceive` — Study Copilot: `{image_base64, trigger_mode:
+  "auto_scan"|"manual_snap", subject_tag}`. Local OCR (pytesseract) +
+  PII/secret redaction run on-device; the keyword gatekeeper drops
+  non-study frames locally (`{"status": "ignored"}`, zero LLM calls).
+  Study frames get one Nemotron call that either auto-schedules an
+  assignment (via `schedule_manager`) or saves a structured Markdown
+  note to `sandbox/docs/auto_notes_{timestamp}.md`. Frames live only in
+  memory and are never written to disk. Requires the `tesseract` binary;
+  degrades with an explicit `ocr_unavailable` error.
 
 ## Architecture notes
 

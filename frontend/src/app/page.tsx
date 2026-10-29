@@ -124,6 +124,174 @@ export default function Home() {
     setMessages([]);
   }
 
+  // --- Screen Perception (Study Copilot) ---
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const prevSigRef = useRef<number[] | null>(null);
+  const busyRef = useRef(false);
+  const [streaming, setStreaming] = useState(false);
+  const [streamLabel, setStreamLabel] = useState("");
+  const [autoDetect, setAutoDetect] = useState(false);
+  const [perceiving, setPerceiving] = useState(false);
+  const [perceptionStatus, setPerceptionStatus] = useState("");
+
+  const statusTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  function setTransientStatus(msg: string) {
+    setPerceptionStatus(msg);
+    if (statusTimer.current) clearTimeout(statusTimer.current);
+    statusTimer.current = setTimeout(() => setPerceptionStatus(""), 5000);
+  }
+
+  function endStudyStream() {
+    if (autoTimerRef.current) {
+      clearInterval(autoTimerRef.current);
+      autoTimerRef.current = null;
+    }
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
+    prevSigRef.current = null;
+    setStreaming(false);
+    setAutoDetect(false);
+    setStreamLabel("");
+    setTransientStatus("stream ended");
+  }
+
+  useEffect(() => {
+    return () => {
+      // never leak screen shares across refreshes
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+      if (autoTimerRef.current) clearInterval(autoTimerRef.current);
+    };
+  }, []);
+
+  async function selectStudyWindow() {
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: { displaySurface: "browser" },
+        audio: false,
+      });
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+      streamRef.current = stream;
+      prevSigRef.current = null;
+      const video = videoRef.current;
+      if (video) {
+        video.srcObject = stream;
+        await video.play().catch(() => {});
+      }
+      const track = stream.getVideoTracks()[0];
+      setStreamLabel(track?.label || "selected window");
+      setStreaming(true);
+      setTransientStatus("study stream active");
+      track?.addEventListener("ended", endStudyStream);
+    } catch {
+      setTransientStatus("screen share cancelled");
+    }
+  }
+
+  function frameSignature(): number[] | null {
+    const video = videoRef.current;
+    if (!video || !video.videoWidth) return null;
+    const grid = document.createElement("canvas");
+    grid.width = 32;
+    grid.height = 18;
+    const gctx = grid.getContext("2d", { willReadFrequently: true });
+    if (!gctx) return null;
+    gctx.drawImage(video, 0, 0, 32, 18);
+    const px = gctx.getImageData(0, 0, 32, 18).data;
+    const sig: number[] = [];
+    for (let i = 0; i < px.length; i += 4) {
+      sig.push((px[i] + 2 * px[i + 1] + px[i + 2]) / 4);
+    }
+    return sig;
+  }
+
+  function captureFrame(force = false): string | null {
+    const sig = frameSignature();
+    if (!sig) return null;
+    const prev = prevSigRef.current;
+    prevSigRef.current = sig;
+    if (!force && prev && prev.length === sig.length) {
+      let changed = 0;
+      for (let i = 0; i < sig.length; i++) {
+        if (Math.abs(sig[i] - prev[i]) > 12) changed++;
+      }
+      // <5% of sampled blocks changed: static screen, skip upload entirely
+      if (changed / sig.length < 0.05) return null;
+    }
+    const video = videoRef.current;
+    if (!video || !video.videoWidth) return null;
+    const canvas = document.createElement("canvas");
+    canvas.width = 1280;
+    canvas.height = Math.round((video.videoHeight / video.videoWidth) * 1280) || 720;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.6);
+    return dataUrl.split(",")[1] ?? null;
+  }
+
+  async function perceive(mode: "auto_scan" | "manual_snap") {
+    if (!streamRef.current || busyRef.current) return;
+    const frame = captureFrame(mode === "manual_snap");
+    if (!frame) {
+      setTransientStatus("frame unchanged — local skip, nothing sent");
+      return;
+    }
+    busyRef.current = true;
+    setPerceiving(true);
+    try {
+      const r = await fetch(`${API}/api/perceive`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ image_base64: frame, trigger_mode: mode }),
+      });
+      if (!r.ok) {
+        setTransientStatus(`perception error ${r.status}`);
+        return;
+      }
+      const data = await r.json();
+      if (data.state) setState(data.state);
+      if (data.status === "ignored") {
+        setTransientStatus(`frame ignored (${data.reason})`);
+      } else if (data.status === "assignment_scheduled") {
+        const title = data.event?.title ?? "item";
+        const when = String(data.event?.date ?? "").slice(0, 16).replace("T", " ");
+        setMessages((m) => [
+          ...m,
+          { role: "assistant", content: `Screen perception: scheduled "${title}" for ${when}` },
+        ]);
+        setTransientStatus(`assignment scheduled — ${title}`);
+      } else if (data.status === "note_saved") {
+        const name = data.note?.note_name ?? "note";
+        setMessages((m) => [
+          ...m,
+          { role: "assistant", content: `Screen perception: saved study note (${name})` },
+        ]);
+        setTransientStatus(`note saved — ${name}`);
+      }
+    } catch {
+      setTransientStatus("perception call failed");
+    } finally {
+      busyRef.current = false;
+      setPerceiving(false);
+    }
+  }
+
+  const autoTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  useEffect(() => {
+    if (autoDetect && streaming) {
+      void perceive("auto_scan");
+      const id = setInterval(() => void perceive("auto_scan"), 30000);
+      autoTimerRef.current = id;
+      return () => clearInterval(id);
+    }
+    if (autoTimerRef.current) {
+      clearInterval(autoTimerRef.current);
+      autoTimerRef.current = null;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoDetect, streaming]);
+
   useEffect(() => {
     logRef.current?.scrollTo({ top: logRef.current.scrollHeight });
   }, [messages, sending]);
@@ -170,16 +338,66 @@ export default function Home() {
 
   return (
     <div className="flex h-screen flex-col bg-zinc-950 text-zinc-100">
-      <header className="flex h-14 shrink-0 items-center justify-between border-b border-zinc-800 px-5">
-        <div className="flex items-center gap-3">
+      <video ref={videoRef} className="hidden" autoPlay muted playsInline />
+      <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-zinc-800 px-5">
+        <div className="flex min-w-0 items-center gap-3">
           <span className="font-mono text-sm font-semibold tracking-widest text-emerald-400">
             SAGE
           </span>
-          <span className="text-xs text-zinc-500">
+          <span className="hidden truncate text-xs text-zinc-500 lg:inline">
             Student Assistant for Growth and Education
           </span>
         </div>
-        <div className="flex items-center gap-4 font-mono text-xs text-zinc-500">
+
+        <div className="flex items-center gap-2 font-mono text-xs">
+          {!streaming ? (
+            <button
+              onClick={selectStudyWindow}
+              className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-1 text-emerald-300 transition-colors hover:bg-emerald-500/20"
+              title="Share a window for the Study Copilot"
+            >
+              Select Study Window
+            </button>
+          ) : (
+            <button
+              onClick={endStudyStream}
+              className="rounded-lg border border-red-500/40 bg-red-500/10 px-2.5 py-1 text-red-300 transition-colors hover:bg-red-500/20"
+            >
+              Stop Stream
+            </button>
+          )}
+          <button
+            onClick={() => void perceive("manual_snap")}
+            disabled={!streaming || perceiving}
+            title="Capture the current window and analyze it now"
+            className="rounded-lg border border-zinc-800 px-2.5 py-1 text-zinc-300 transition-colors hover:border-emerald-500/40 hover:text-emerald-300 disabled:opacity-40"
+          >
+            {perceiving ? "analyzing…" : "Snap & Analyze"}
+          </button>
+          <label
+            className="hidden cursor-pointer select-none items-center gap-1.5 text-zinc-400 xl:flex"
+            title="Scan the shared window every 30s for assignment deadlines"
+          >
+            <input
+              type="checkbox"
+              className="accent-emerald-500"
+              checked={autoDetect}
+              disabled={!streaming}
+              onChange={(e) => setAutoDetect(e.target.checked)}
+            />
+            Auto-Detect Assignments
+          </label>
+          {streaming && (
+            <span
+              className="hidden max-w-40 truncate rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-emerald-300 md:inline"
+              title={streamLabel}
+            >
+              Active Stream [{streamLabel}]
+            </span>
+          )}
+        </div>
+
+        <div className="flex shrink-0 items-center gap-4 font-mono text-xs text-zinc-500">
           <span className="flex items-center gap-2">
             <span
               className={`h-2 w-2 rounded-full ${
@@ -205,6 +423,12 @@ export default function Home() {
           </button>
         </div>
       </header>
+
+      {perceptionStatus && (
+        <div className="pointer-events-none fixed bottom-4 left-4 z-50 rounded-lg border border-zinc-800 bg-zinc-900/95 px-3 py-2 font-mono text-xs text-zinc-300">
+          perception: {perceptionStatus}
+        </div>
+      )}
 
       <div className="flex min-h-0 flex-1">
         <main className="flex min-h-0 flex-1 flex-col border-r border-zinc-800">
