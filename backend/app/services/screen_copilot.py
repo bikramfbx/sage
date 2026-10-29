@@ -151,10 +151,21 @@ class ScreenCopilot:
                         date_time=str(date_time),
                         location=decision.get("location") or None,
                     )
+                    when = event["date"][:16].replace("T", " ")
+                    if event.get("duplicate"):
+                        log_line = (
+                            f"Screen perception: \"{event['title']}\" is already on "
+                            f"your schedule for {when}"
+                        )
+                    else:
+                        log_line = (
+                            f"Screen perception: scheduled \"{event['title']}\" for {when}"
+                        )
                     return {
                         "type": "assignment",
                         "event": event,
                         "source": "llm" if not decision.get("offline") else "offline",
+                        "log_line": log_line,
                     }
                 except ValueError as exc:
                     decision = {
@@ -183,6 +194,7 @@ class ScreenCopilot:
             "type": "note",
             "note": note,
             "source": "llm" if not decision.get("offline") else "offline",
+            "log_line": f"Screen perception: saved study note ({note['note_name']})",
         }
 
 

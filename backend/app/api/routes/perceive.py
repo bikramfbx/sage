@@ -14,6 +14,16 @@ router = APIRouter()
 
 def _outcome(outcome: dict, matched: list) -> PerceiveOutcome:
     state = sage_brain.build_state()
+    log_line = {
+        "assignment": outcome.get("log_line"),
+        "note": outcome.get("log_line"),
+    }.get(outcome.get("type"))
+
+    # persist the perception log bubble so it survives page refreshes via
+    # GET /api/history (assignment/note outcomes only)
+    if log_line:
+        sage_brain.memory.append("assistant", log_line)
+
     kind = outcome.get("type")
     if kind == "assignment":
         return PerceiveOutcome(
@@ -21,6 +31,7 @@ def _outcome(outcome: dict, matched: list) -> PerceiveOutcome:
             matched_keywords=matched,
             event=outcome.get("event"),
             source=outcome.get("source"),
+            log_line=log_line,
             state=state,
         )
     if kind == "note":
@@ -29,6 +40,7 @@ def _outcome(outcome: dict, matched: list) -> PerceiveOutcome:
             matched_keywords=matched,
             note=outcome.get("note"),
             source=outcome.get("source"),
+            log_line=log_line,
             state=state,
         )
     return PerceiveOutcome(

@@ -220,7 +220,7 @@ class SageBrain:
     def build_state(self, documents: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
         return {
             "macros": self.tracker.state(),
-            "schedule": self.schedule.state(8),
+            "schedule": self.schedule.state(12),
             "documents": documents or [],
         }
 

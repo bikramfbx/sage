@@ -120,9 +120,16 @@ class ScheduleManager:
         date_time: str,
         location: Optional[str] = None,
         course: Optional[str] = None,
+        dedupe: bool = True,
     ) -> Dict[str, Any]:
         when = parse_datetime(date_time)
         code = course or (m.group(1) if (m := _CODE_RE.search(title)) else None)
+        if dedupe:
+            existing = self.find_same_day(title, when)
+            if existing:
+                matched = dict(existing)
+                matched["duplicate"] = True
+                return matched
         event = {
             "id": f"evt-{int(datetime.now().timestamp() * 1000)}",
             "title": title.strip(),
@@ -133,6 +140,23 @@ class ScheduleManager:
         self.events.append(event)
         self._save()
         return event
+
+    def find_same_day(self, title: str, when: datetime) -> Optional[Dict[str, Any]]:
+        """An event with a matching title already set on the same day?"""
+        norm = " ".join(str(title).lower().split())
+        for e in self.events:
+            try:
+                when_e = datetime.fromisoformat(e.get("date", ""))
+            except ValueError:
+                continue
+            if when_e.date() != when.date():
+                continue
+            norm_e = " ".join(str(e.get("title", "")).lower().split())
+            if not norm_e:
+                continue
+            if norm in norm_e or norm_e in norm or norm_e[:40] == norm[:40]:
+                return e
+        return None
 
     def _parse_segment(self, segment: str) -> Optional[Dict[str, Any]]:
         """Parse one timetable segment into day indices, time, title, code, location.
@@ -246,6 +270,7 @@ class ScheduleManager:
                         date_time=when.isoformat(timespec="seconds"),
                         location=location,
                         course=parsed["course"],
+                        dedupe=False,
                     )
                     added.append(ev)
 
@@ -274,5 +299,18 @@ class ScheduleManager:
         upcoming.sort(key=lambda e: e.get("date", ""))
         return upcoming[:limit]
 
-    def state(self, limit: int = 8) -> List[Dict[str, Any]]:
-        return self.upcoming(limit)
+    def state(self, limit: int = 12) -> List[Dict[str, Any]]:
+        """Sidebar view: next occurrences with recurring titles collapsed
+        to a single entry, so one-off deadlines aren't drowned out."""
+        pool = self.upcoming(limit * 3)
+        shown: List[Dict[str, Any]] = []
+        seen_titles = set()
+        for e in pool:
+            norm = " ".join(str(e.get("title", "")).lower().split())
+            if norm and norm in seen_titles:
+                continue
+            seen_titles.add(norm)
+            shown.append(e)
+            if len(shown) >= limit:
+                break
+        return shown

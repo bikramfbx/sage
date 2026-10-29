@@ -254,20 +254,11 @@ export default function Home() {
       if (data.status === "ignored") {
         setTransientStatus(`frame ignored (${data.reason})`);
       } else if (data.status === "assignment_scheduled") {
-        const title = data.event?.title ?? "item";
-        const when = String(data.event?.date ?? "").slice(0, 16).replace("T", " ");
-        setMessages((m) => [
-          ...m,
-          { role: "assistant", content: `Screen perception: scheduled "${title}" for ${when}` },
-        ]);
-        setTransientStatus(`assignment scheduled — ${title}`);
+        setMessages((m) => [...m, { role: "assistant", content: data.log_line }]);
+        setTransientStatus(`assignment scheduled — ${data.log_line ?? ""}`);
       } else if (data.status === "note_saved") {
-        const name = data.note?.note_name ?? "note";
-        setMessages((m) => [
-          ...m,
-          { role: "assistant", content: `Screen perception: saved study note (${name})` },
-        ]);
-        setTransientStatus(`note saved — ${name}`);
+        setMessages((m) => [...m, { role: "assistant", content: data.log_line }]);
+        setTransientStatus(`note saved — ${data.log_line ?? ""}`);
       }
     } catch {
       setTransientStatus("perception call failed");

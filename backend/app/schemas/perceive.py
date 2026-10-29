@@ -21,4 +21,5 @@ class PerceiveOutcome(BaseModel):
     event: Optional[dict] = None
     note: Optional[dict] = None
     source: Optional[str] = None
+    log_line: Optional[str] = None
     state: Optional[AgentState] = None
