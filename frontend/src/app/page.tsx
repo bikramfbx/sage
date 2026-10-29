@@ -437,9 +437,9 @@ function DashboardApp() {
   const macros = state.macros;
 
   return (
-    <div id="docs" className="flex min-h-screen w-full items-stretch gap-5 px-4 py-5 text-zinc-100 sm:px-6">
+    <div id="docs" className="flex h-screen w-full overflow-hidden items-stretch gap-5 px-4 py-5 text-zinc-100 sm:px-6">
       <video ref={videoRef} className="hidden" autoPlay muted playsInline />
-      <div className="fixed right-5 top-5 z-30 flex items-center gap-2 rounded-full border border-white/10 bg-black/30 px-3 py-1.5 font-[family-name:var(--font-mono,ui-monospace)] text-[10px] uppercase tracking-[0.22em] text-zinc-400 backdrop-blur-md">
+      <div className="fixed right-5 top-5 z-30 flex items-center gap-2 rounded-full border border-white/10 bg-black/20 px-3 py-1.5 font-[family-name:var(--font-mono,ui-monospace)] text-[10px] uppercase tracking-[0.22em] text-zinc-400 backdrop-blur-md">
         <span
           className={`h-1.5 w-1.5 rounded-full ${
             online === null
@@ -460,7 +460,7 @@ function DashboardApp() {
 
       <main
         id="chat"
-        className="relative z-10 flex min-h-[calc(100vh-2.5rem)] flex-1 flex-col overflow-hidden rounded-3xl border border-white/10 bg-white/[0.045] shadow-[0_10px_70px_rgba(0,0,0,0.45)] backdrop-blur-2xl"
+        className="relative z-10 flex h-full min-h-0 flex-1 flex-col overflow-hidden rounded-3xl border border-white/10 bg-white/[0.02] shadow-[0_10px_70px_rgba(0,0,0,0.4)] backdrop-blur-lg"
       >
         <div className="flex h-11 shrink-0 items-center border-b border-white/[0.07] px-5">
           <span className="font-[family-name:var(--font-mono,ui-monospace)] text-[10px] uppercase tracking-[0.35em] text-emerald-300/80">
@@ -486,7 +486,7 @@ function DashboardApp() {
                   className={
                     m.role === "user"
                       ? "max-w-[80%] rounded-2xl rounded-br-sm border border-emerald-300/25 bg-emerald-400/15 px-4 py-2.5 text-sm text-emerald-50 backdrop-blur-md"
-                      : "max-w-[85%] rounded-2xl rounded-bl-sm border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-zinc-200 backdrop-blur-md"
+                      : "max-w-[85%] rounded-2xl rounded-bl-sm border border-white/10 bg-black/15 px-4 py-2.5 text-sm text-zinc-200 backdrop-blur-sm"
                   }
                 >
                   <p className="whitespace-pre-wrap">{m.content}</p>
@@ -521,19 +521,19 @@ function DashboardApp() {
           </div>
         </div>
 
-        <div className="shrink-0 border-t border-white/[0.07] bg-white/[0.03] p-4">
+        <div className="shrink-0 border-t border-white/[0.07] p-4">
           <div className="mx-auto flex max-w-2xl gap-2">
             <input
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && send()}
               placeholder="Message SAGE…"
-              className="flex-1 rounded-xl border border-white/10 bg-white/[0.06] px-4 py-2.5 text-sm text-zinc-100 outline-none backdrop-blur-md placeholder:text-zinc-500 focus:border-emerald-300/50"
+              className="flex-1 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2.5 text-sm text-zinc-100 outline-none backdrop-blur-md placeholder:text-zinc-500 focus:border-emerald-300/50"
             />
             <button
               onClick={send}
               disabled={sending || !input.trim()}
-              className="rounded-xl bg-emerald-400/90 px-5 py-2.5 text-sm font-semibold text-[#08130d] transition-colors hover:bg-emerald-300 disabled:opacity-40"
+              className="rounded-xl bg-emerald-400/75 px-5 py-2.5 text-sm font-semibold text-[#08130d] backdrop-blur-md transition-colors hover:bg-emerald-300 disabled:opacity-40"
             >
               Send
             </button>
@@ -542,7 +542,7 @@ function DashboardApp() {
       </main>
 
       <aside className="hidden w-[21rem] shrink-0 flex-col gap-5 overflow-y-auto overflow-x-hidden pb-1 lg:flex">
-        <section className="rounded-3xl border border-white/10 bg-white/[0.045] p-4 backdrop-blur-2xl">
+        <section className="rounded-3xl border border-white/10 bg-white/[0.02] p-4 backdrop-blur-lg">
           <h2 className="mb-3 font-[family-name:var(--font-mono,ui-monospace)] text-[10px] uppercase tracking-[0.28em] text-zinc-400">
             Macro Tracker
             <span className="float-right normal-case text-zinc-500/80">{macros.date}</span>
@@ -577,7 +577,7 @@ function DashboardApp() {
           )}
         </section>
 
-        <section className="rounded-3xl border border-white/10 bg-white/[0.045] p-4 backdrop-blur-2xl">
+        <section className="rounded-3xl border border-white/10 bg-white/[0.02] p-4 backdrop-blur-lg">
           <h2 className="mb-3 font-[family-name:var(--font-mono,ui-monospace)] text-[10px] uppercase tracking-[0.28em] text-zinc-400">
             Upcoming Schedule
           </h2>
@@ -588,7 +588,7 @@ function DashboardApp() {
               {state.schedule.map((ev, i) => (
                 <div
                   key={i}
-                  className="rounded-2xl border border-white/10 bg-black/25 p-3 transition-colors hover:border-white/20"
+                  className="rounded-2xl border border-white/10 bg-black/15 p-3 transition-colors hover:border-white/20"
                 >
                   <div className="flex items-start justify-between gap-2">
                     <p className="text-sm font-medium text-zinc-100">{ev.title}</p>
@@ -615,7 +615,8 @@ function DashboardApp() {
 }
 
 export default function SAGEHeroLanding() {
-  // the interface blooms in over the aurora background after 3 seconds
+  // the interface blooms in over the aurora background after 3 seconds,
+  // preceded by a soft welcome card that fades into the silk
   const [interfaceReady, setInterfaceReady] = useState(false);
   useEffect(() => {
     const t = setTimeout(() => setInterfaceReady(true), 3000);
@@ -623,9 +624,41 @@ export default function SAGEHeroLanding() {
   }, []);
 
   return (
-    <div className="relative min-h-screen bg-[#08080B]">
+    <div className="relative h-screen overflow-hidden bg-[#08080B]">
       <div className="fixed inset-0 z-0">
         <AuroraHero eyebrow="" headline="" description="" meta={[]} />
+        <motion.div
+          variants={{
+            visible: {
+              opacity: 1,
+              transition: { duration: 1.2, delay: 0.3, ease: "easeOut" },
+            },
+            hidden: { opacity: 0, scale: 1.06, transition: { duration: 0.9, ease: "easeOut" } },
+          }}
+          initial="visible"
+          animate={interfaceReady ? "hidden" : "visible"}
+          aria-hidden={!interfaceReady}
+          className="pointer-events-none absolute inset-0 z-10 grid place-items-center"
+        >
+          <div className="-mt-10 text-center">
+            <p className="font-[family-name:var(--font-mono,ui-monospace)] text-[11px] uppercase tracking-[0.42em] text-emerald-300/70">
+              ambient student os
+            </p>
+            <h1
+              className="mt-4 text-5xl text-[#EDE8DF] sm:text-7xl"
+              style={{
+                fontFamily: "var(--font-instrument), 'Instrument Sans', sans-serif",
+                fontWeight: 500,
+                letterSpacing: "-0.02em",
+              }}
+            >
+              Welcome to SAGE
+            </h1>
+            <p className="mt-5 font-[family-name:var(--font-mono,ui-monospace)] text-xs tracking-[0.18em] text-zinc-400/80">
+              initializing ambient interface…
+            </p>
+          </div>
+        </motion.div>
       </div>
       {interfaceReady && (
         <motion.div
