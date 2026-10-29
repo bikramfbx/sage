@@ -350,34 +350,58 @@ export default function Home() {
       ...messages.map(({ role, content }) => ({ role, content })),
       { role: "user", content: text },
     ];
-    const body = JSON.stringify({ messages: history });
     setMessages((m) => [...m, { role: "user", content: text }]);
     setSending(true);
 
-    async function postChat(base: string) {
-      const r = await fetch(`${base}/api/chat`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body,
-      });
-      if (!r.ok) {
-        const detail = await r.text().catch(() => "");
-        console.error(`SAGE chat POST ${base}/api/chat -> HTTP ${r.status} ${r.statusText}`, detail.slice(0, 300));
-        throw new Error(`HTTP ${r.status} on ${base}`);
+    // context window slicing: keep the payload safely under the 64-item
+    // server cap while preserving the most recent conversation context
+    const SLICE_LIMITS = [50, 30];
+
+    type ChatError =
+      | { kind: "http"; status: number; detail: string; base: string }
+      | { kind: "network"; cause: unknown; base: string };
+
+    async function postChat(base: string, limit: number): Promise<any> {
+      try {
+        const r = await fetch(`${base}/api/chat`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ messages: history.slice(-limit) }),
+        });
+        if (!r.ok) {
+          const detail = await r.text().catch(() => "");
+          console.error(
+            `SAGE chat POST ${base}/api/chat -> HTTP ${r.status} ${r.statusText}`,
+            detail.slice(0, 300)
+          );
+          throw { kind: "http", status: r.status, detail, base };
+        }
+        return r.json();
+      } catch (err: any) {
+        if (err && err.kind === "http") throw err;
+        console.error(`SAGE chat network error via ${base}:`, err);
+        throw { kind: "network", cause: err, base };
       }
-      return r.json();
     }
 
     try {
       let data;
       try {
-        data = await postChat(apiBase);
-      } catch (err) {
-        console.error(`SAGE chat request failed via ${apiBase}:`, err);
-        // network/CORS hiccup on one stack — retry transparently on the other
-        const alt = apiBase === API ? API_FALLBACK : API;
-        data = await postChat(alt);
-        setApiBase(alt);
+        data = await postChat(apiBase, SLICE_LIMITS[0]);
+      } catch (err: any) {
+        if (err.kind === "http" && (err.status === 422 || err.status === 400)) {
+          // validation error, not a connectivity problem — truncate harder
+          setTransientStatus("message context too long; truncating window…");
+          console.warn("SAGE chat: payload rejected, retrying with a smaller window");
+          data = await postChat(apiBase, SLICE_LIMITS[1]);
+        } else if (err.kind === "network") {
+          // one stack unreachable — try the alternate base transparently
+          const alt = apiBase === API ? API_FALLBACK : API;
+          data = await postChat(alt, SLICE_LIMITS[0]);
+          setApiBase(alt);
+        } else {
+          throw err;
+        }
       }
       setMessages((m) => [
         ...m,
@@ -385,16 +409,24 @@ export default function Home() {
       ]);
       if (data.state) setState(data.state);
       setOnline(true);
-    } catch (err) {
-      console.error("SAGE chat unreachable on both bases:", err);
-      setMessages((m) => [
-        ...m,
-        {
-          role: "assistant",
-          content: `Cannot reach the SAGE backend on ${apiBase} or ${API_FALLBACK}. Is uvicorn running? (see browser console for details)`,
-        },
-      ]);
-      setOnline(false);
+    } catch (err: any) {
+      const offlineError =
+        err.kind === "network" || (err.kind === "http" && err.status === 503);
+      console.error("SAGE chat failed:", err);
+      if (offlineError) {
+        setMessages((m) => [
+          ...m,
+          {
+            role: "assistant",
+            content: `Cannot reach the SAGE backend on ${apiBase} or ${API_FALLBACK}. Is uvicorn running? (see browser console for details)`,
+          },
+        ]);
+        setOnline(false);
+      } else {
+        setTransientStatus(
+          `backend rejected the message (HTTP ${err.status ?? "?"}) — context truncated`
+        );
+      }
     } finally {
       setSending(false);
     }
