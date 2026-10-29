@@ -615,12 +615,18 @@ function DashboardApp() {
 }
 
 export default function SAGEHeroLanding() {
-  // the interface blooms in over the aurora background after 3 seconds,
-  // preceded by a soft welcome card that fades into the silk
+  // PlayStation-style startup: 5s total. The logo card blooms in slowly,
+  // steams over the silk, starts fading at ~3.3s so it is fully gone by
+  // 4s, and the interface mounts at the 5s mark.
+  const [textVisible, setTextVisible] = useState(true);
   const [interfaceReady, setInterfaceReady] = useState(false);
   useEffect(() => {
-    const t = setTimeout(() => setInterfaceReady(true), 3000);
-    return () => clearTimeout(t);
+    const a = setTimeout(() => setTextVisible(false), 3300);
+    const b = setTimeout(() => setInterfaceReady(true), 5000);
+    return () => {
+      clearTimeout(a);
+      clearTimeout(b);
+    };
   }, []);
 
   return (
@@ -628,43 +634,62 @@ export default function SAGEHeroLanding() {
       <div className="fixed inset-0 z-0">
         <AuroraHero eyebrow="" headline="" description="" meta={[]} />
         <motion.div
-          variants={{
-            visible: {
-              opacity: 1,
-              transition: { duration: 1.2, delay: 0.3, ease: "easeOut" },
-            },
-            hidden: { opacity: 0, scale: 1.06, transition: { duration: 0.9, ease: "easeOut" } },
-          }}
-          initial="visible"
-          animate={interfaceReady ? "hidden" : "visible"}
-          aria-hidden={!interfaceReady}
+          initial={{ opacity: 0, scale: 0.96, filter: "blur(14px)" }}
+          animate={
+            textVisible
+              ? { opacity: 1, scale: 1, filter: "blur(0px)" }
+              : { opacity: 0, scale: 1.07, filter: "blur(12px)" }
+          }
+          transition={
+            textVisible
+              ? { duration: 1.7, delay: 0.35, ease: [0.16, 1, 0.3, 1] }
+              : { duration: 1.0, ease: "easeInOut" }
+          }
+          aria-hidden={!textVisible}
           className="pointer-events-none absolute inset-0 z-10 grid place-items-center"
         >
-          <div className="-mt-10 text-center">
-            <p className="font-[family-name:var(--font-mono,ui-monospace)] text-[11px] uppercase tracking-[0.42em] text-emerald-300/70">
+          <div className="-mt-14 px-6 text-center">
+            <motion.p
+              className="font-[family-name:var(--font-mono,ui-monospace)] text-xs uppercase tracking-[0.55em] text-emerald-300/70 sm:text-sm"
+              initial={{ opacity: 0, letterSpacing: "0.2em" }}
+              animate={
+                textVisible
+                  ? { opacity: 1, letterSpacing: "0.55em" }
+                  : { opacity: 0 }
+              }
+              transition={{ duration: 1.6, delay: 0.7, ease: "easeOut" }}
+            >
               ambient student os
-            </p>
+            </motion.p>
             <h1
-              className="mt-4 text-5xl text-[#EDE8DF] sm:text-7xl"
+              className="mt-10 text-[#EDE8DF]"
               style={{
-                fontFamily: "var(--font-instrument), 'Instrument Sans', sans-serif",
+                fontFamily:
+                  "var(--font-instrument), 'Instrument Sans', sans-serif",
                 fontWeight: 500,
-                letterSpacing: "-0.02em",
+                fontSize: "clamp(4.5rem, 13vw, 13rem)",
+                lineHeight: 1.04,
+                letterSpacing: "-0.03em",
               }}
             >
               Welcome to SAGE
             </h1>
-            <p className="mt-5 font-[family-name:var(--font-mono,ui-monospace)] text-xs tracking-[0.18em] text-zinc-400/80">
+            <motion.p
+              className="mt-12 font-[family-name:var(--font-mono,ui-monospace)] text-[11px] tracking-[0.3em] text-zinc-400/70 sm:text-xs"
+              initial={{ opacity: 0 }}
+              animate={textVisible ? { opacity: 1 } : { opacity: 0 }}
+              transition={{ duration: 1.2, delay: 1.1, ease: "easeOut" }}
+            >
               initializing ambient interface…
-            </p>
+            </motion.p>
           </div>
         </motion.div>
       </div>
       {interfaceReady && (
         <motion.div
-          initial={{ opacity: 0, y: 30, scale: 0.985 }}
+          initial={{ opacity: 0, y: 34, scale: 0.985 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
-          transition={{ type: "spring", stiffness: 84, damping: 18 }}
+          transition={{ type: "spring", stiffness: 72, damping: 17, delay: 0.05 }}
           className="relative z-10"
         >
           <DashboardApp />
