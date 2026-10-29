@@ -44,7 +44,7 @@ Tools and when to use them:
 - log_macros: ONLY when the student logs NEW food they actually ate ("I ate X", "had X for dinner", "add a meal"). If they give exact numbers, use them as-is. If the meal is vague, estimate from the portion anchors above. Always pass a short food_description. If the tool result reports duplicate: true, the meal was already recorded today — do not retry, just confirm it's tracked and give the current totals.
 - edit_macro_entry: when the student corrects or challenges an estimate ("No, 6 eggs is 36 g protein, not 85 g", "it was way less than that") — update the matching logged entry instead of re-logging or ignoring it. Match against the entries in the daily macro state below by keyword; if nothing matches, say so.
 - manage_schedule: whenever the user wants an event added, a weekly timetable imported, or asks what's coming up. Use add_event for single events and resolve relative dates like "tomorrow 5 PM" into ISO 8601 using the current time given below. Use bulk_import_timetable for pasted or one-shot timetables (formats like "CS302 Mon/Wed 10 AM in LT-5, OS Lab Tue 2 PM in Lab 2" or "Mon 09:00 CS-302 Distributed Systems @ LT-5"). Use get_schedule when asked about plans. If a call fails, adjust and retry once.
-- search_docs: when the user asks about their notes, PDFs, lectures, syllabus, or anything likely to live inside their documents.
+- search_docs: when the user asks about their notes, PDFs, lectures, syllabus, auto-captured assignment notes, or wants to recall anything previously captured ("what was X about again?"). It searches PDFs, markdown notes, and scheduled events.
 
 Logging vs. asking (critical):
 - Strictly distinguish a LOG action from a QUERY action. A LOG records new food ("I ate X", "log my lunch"). A QUERY asks about food or macros already discussed or recorded ("how many calories were in that dinner?", "what are my macros?", "how much protein do I have left?").
@@ -67,6 +67,7 @@ Response formatting:
 
 Behavior:
 - Decide on your own when tools are needed: converse freely when none are, and chain multiple tools in a single turn when the request calls for it.
+- Convergence: when search results already answer the question, synthesize the reply immediately. Run at most one refined follow-up search — never repeat near-identical queries.
 - After tool results come back, synthesize them into a natural reply — never raw tool output.
 - Keep replies tight — a few sentences unless the user clearly wants depth. Plain text, minimal formatting.
 - If you don't know something, say so honestly rather than inventing it.
@@ -75,6 +76,8 @@ Context: today is {date} ({weekday}), local time {time}.
 Daily macro state for {macro_date}: {cal} / {tcal} kcal, {protein} / {tprotein} g protein so far.
 Already logged today (never re-log these): 
 {meals}
+Upcoming calendar entries (from sandbox/state/schedule.json):
+{schedule_block}
 {memory_block}"""
 
 TOOLS = [
@@ -176,7 +179,13 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "search_docs",
-            "description": "Search the student's personal PDF library (sandbox/docs) for relevant passages.",
+            "description": (
+                "Search the student's personal library in sandbox/docs — PDF "
+                "lecture notes AND auto-captured study notes — plus scheduled "
+                "events. Use it whenever the user recalls something previously "
+                "seen or captured: 'what was assignment X about?', deadlines, "
+                "quizzes, lecture material. New captures are indexed automatically."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -199,13 +208,18 @@ class SageBrain:
         self.sandbox_dir = Path(sandbox_dir) if sandbox_dir else REPO_ROOT / "sandbox"
         self.state_dir = self.sandbox_dir / "state"
         self.tracker = MacroTracker(self.state_dir / "macros.json")
-        self.reader = RagReader(self.sandbox_dir / "docs")
         self.schedule = ScheduleManager(
             self.state_dir / "schedule.json",
             self.sandbox_dir / "calendar" / "events.json",
         )
+        # rag can search the docs library AND upcoming schedule entries
+        self.reader = RagReader(
+            self.sandbox_dir / "docs",
+            schedule_provider=lambda: self.schedule.state(24),
+        )
         self.memory = MemoryManager(self.state_dir)
         self.screen_copilot = ScreenCopilot(self.schedule)
+        self.screen_copilot.on_note_saved = self.reader.invalidate
         self.model = settings.model_id
         self.client: Optional[AsyncOpenAI] = None
         if settings.nebius_api_key:
@@ -240,12 +254,22 @@ class SageBrain:
         memory_block = (
             f"[Prior Session Memory]\n{memory_block}" if memory_block else ""
         )
+        upcoming = self.schedule.state(10)
+        if upcoming:
+            schedule_block = "\n".join(
+                f"- {e['date'][:16].replace('T', ' ')} — {e['title']}"
+                + (f" ({e['location']})" if e.get("location") else "")
+                for e in upcoming
+            )
+        else:
+            schedule_block = "(no upcoming events)"
         return SYSTEM_PROMPT.format(
             date=now.strftime("%B %d, %Y"),
             weekday=now.strftime("%A"),
             time=now.strftime("%H:%M"),
             macro_date=macro_state["date"],
             meals=meals,
+            schedule_block=schedule_block,
             memory_block=memory_block,
             cal=f"{totals['calories']:.0f}",
             tcal=f"{self.tracker.targets['calories']:.0f}",

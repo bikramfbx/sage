@@ -11,7 +11,7 @@ import re
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(REPO_ROOT) not in sys.path:
@@ -46,6 +46,7 @@ class ScreenCopilot:
         self.model = settings.model_id
         self.docs_dir = assert_in_sandbox(REPO_ROOT / "sandbox" / "docs")
         self.client = None  # wired by the brain singleton to reuse its client
+        self.on_note_saved: Optional[Callable[[], None]] = None  # re-index hook
         self.llm_calls = 0
 
     def _prompt(self) -> str:
@@ -84,6 +85,11 @@ class ScreenCopilot:
             build_note_markdown(redacted_text, subject_tag, matched, markdown),
             encoding="utf-8",
         )
+        if self.on_note_saved:
+            try:
+                self.on_note_saved()
+            except Exception:
+                pass
         return {"path": f"sandbox/{note_rel}", "note_name": note_path.name}
 
     def _offline_decision(
