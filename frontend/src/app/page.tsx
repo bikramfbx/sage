@@ -641,24 +641,15 @@ export default function SAGEHeroLanding() {
               : { duration: 0.95, ease: [0.72, 0, 0.28, 1] }
           }
           aria-hidden={!textVisible}
-          className="pointer-events-none absolute inset-0 z-10 flex flex-col items-start justify-center pl-8 text-left sm:pl-14 lg:pl-24"
+          className="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center px-6 text-center"
         >
-          <p className="font-[family-name:var(--font-mono,ui-monospace)] text-[10px] uppercase tracking-[0.34em] text-emerald-300/70 sm:text-[11px]">
-            Student Assistant for Growth and Education
+          <p className="inline-flex px-4 py-1.5 rounded-full bg-white/5 border border-white/10 font-[family-name:var(--font-mono,ui-monospace)] text-xs tracking-widest text-emerald-400">
+            STUDENT ASSISTANT FOR GROWTH AND EDUCATION
           </p>
-          <h1
-            className="boot-title mt-3"
-            style={{
-              fontFamily: "var(--font-cinzel), 'Cinzel', serif",
-              fontWeight: 700,
-              fontSize: "clamp(4rem, 12.5vw, 11.5rem)",
-              lineHeight: 1.04,
-              letterSpacing: "0.015em",
-            }}
-          >
+          <h1 className="mt-8 text-7xl sm:text-8xl font-semibold tracking-[-0.04em] bg-gradient-to-b from-white via-zinc-200 to-zinc-400 bg-clip-text text-transparent">
             SAGE
           </h1>
-          <p className="mt-4 font-[family-name:var(--font-mono,ui-monospace)] text-[10px] tracking-[0.3em] text-zinc-400/70 sm:text-xs">
+          <p className="mt-6 font-[family-name:var(--font-mono,ui-monospace)] text-[10px] tracking-[0.3em] text-zinc-400/70 sm:text-xs">
             initializing ambient interface…
           </p>
         </motion.div>

@@ -3,7 +3,6 @@ import {
   Geist,
   Geist_Mono,
   Instrument_Sans,
-  Cinzel,
   Space_Mono,
 } from "next/font/google";
 import "./globals.css";
@@ -19,14 +18,8 @@ const geistMono = Geist_Mono({
 });
 
 const instrumentSans = Instrument_Sans({
-  weight: ["500", "600"],
+  weight: ["500", "600", "700"],
   variable: "--font-instrument",
-  subsets: ["latin"],
-});
-
-const cinzel = Cinzel({
-  weight: ["400", "700"],
-  variable: "--font-cinzel",
   subsets: ["latin"],
 });
 
@@ -45,7 +38,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} ${instrumentSans.variable} ${cinzel.variable} ${spaceMono.variable} h-full antialiased dark`}
+      className={`${geistSans.variable} ${geistMono.variable} ${instrumentSans.variable} ${spaceMono.variable} h-full antialiased dark`}
     >
       <body className="min-h-full flex flex-col bg-zinc-950 text-zinc-100 font-sans">{children}</body>
     </html>
