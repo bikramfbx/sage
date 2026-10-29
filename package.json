@@ -1,0 +1,12 @@
+{
+  "name": "sage",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SAGE — Student Assistant for Growth and Education (monorepo root)",
+  "scripts": {
+    "dev": "bash start_servers.sh",
+    "start": "bash start_servers.sh",
+    "frontend": "npm run dev --prefix frontend",
+    "backend": "bash start_servers.sh"
+  }
+}

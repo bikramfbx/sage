@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 
 const API = "http://localhost:8001";
+const API_FALLBACK = "http://127.0.0.1:8001";
 
 type MacroEntry = { label: string; calories: number; protein: number; time: string };
 type MacrosState = {
@@ -94,34 +95,88 @@ export default function Home() {
   const [online, setOnline] = useState<boolean | null>(null);
   const [state, setState] = useState<AgentState>(EMPTY_STATE);
   const logRef = useRef<HTMLDivElement>(null);
+  const [apiBase, setApiBase] = useState(API);
 
   useEffect(() => {
-    fetch(`${API}/api/state`)
-      .then((r) => {
-        if (!r.ok) throw new Error(String(r.status));
-        return r.json();
-      })
-      .then((s: AgentState) => {
-        setState(s);
-        setOnline(true);
-      })
-      .catch(() => setOnline(false));
+    let alive = true;
+    let timer: ReturnType<typeof setTimeout> | null = null;
 
-    fetch(`${API}/api/history`)
-      .then((r) => (r.ok ? r.json() : Promise.reject()))
-      .then((h) => {
-        if (Array.isArray(h.messages)) {
-          setMessages(h.messages.map((m: { role: "user" | "assistant" | "system"; content: string }) => ({ role: m.role, content: m.content })));
+    const probe = async (base: string): Promise<boolean> => {
+      try {
+        const r = await fetch(`${base}/api/state`);
+        if (!r.ok) {
+          console.warn(`SAGE backend probe ${base} -> HTTP ${r.status}`);
+          return false;
         }
-      })
-      .catch(() => {});
+        const s: AgentState = await r.json();
+        setState(s);
+        setApiBase(base);
+        return true;
+      } catch (err) {
+        console.warn(`SAGE backend probe ${base} failed:`, err);
+        return false;
+      }
+    };
+
+    async function connect() {
+      // browsers may resolve localhost to IPv6 ::1, which a 0.0.0.0 bind
+      // doesn't cover — try it first, then the explicit IPv4 fallback
+      if (await probe(API)) {
+        if (alive) {
+          setOnline(true);
+          loadHistory(API);
+        }
+        return true;
+      }
+      if (await probe(API_FALLBACK)) {
+        if (alive) {
+          setOnline(true);
+          loadHistory(API_FALLBACK);
+        }
+        return true;
+      }
+      if (alive) {
+        setOnline(false);
+        // self-heal: keep retrying instead of staying red until a reload
+        timer = setTimeout(connect, 4000);
+      }
+      return false;
+    }
+
+    void connect();
+    const onVisible = () => document.visibilityState === "visible" && void connect();
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      alive = false;
+      if (timer) clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function clearHistory() {
     try {
-      await fetch(`${API}/api/history`, { method: "DELETE" });
+      await fetch(`${apiBase}/api/history`, { method: "DELETE" });
     } catch {}
     setMessages([]);
+  }
+
+  async function loadHistory(base: string) {
+    try {
+      const r = await fetch(`${base}/api/history`);
+      if (!r.ok) return;
+      const h = await r.json();
+      if (Array.isArray(h.messages)) {
+        setMessages(
+          h.messages.map(
+            (m: { role: "user" | "assistant" | "system"; content: string }) => ({
+              role: m.role,
+              content: m.content,
+            })
+          )
+        );
+      }
+    } catch {}
   }
 
   // --- Screen Perception (Study Copilot) ---
@@ -240,7 +295,7 @@ export default function Home() {
     busyRef.current = true;
     setPerceiving(true);
     try {
-      const r = await fetch(`${API}/api/perceive`, {
+      const r = await fetch(`${apiBase}/api/perceive`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ image_base64: frame, trigger_mode: mode }),
@@ -295,28 +350,48 @@ export default function Home() {
       ...messages.map(({ role, content }) => ({ role, content })),
       { role: "user", content: text },
     ];
+    const body = JSON.stringify({ messages: history });
     setMessages((m) => [...m, { role: "user", content: text }]);
     setSending(true);
-    try {
-      const r = await fetch(`${API}/api/chat`, {
+
+    async function postChat(base: string) {
+      const r = await fetch(`${base}/api/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: history }),
+        body,
       });
-      if (!r.ok) throw new Error(String(r.status));
-      const data = await r.json();
+      if (!r.ok) {
+        const detail = await r.text().catch(() => "");
+        console.error(`SAGE chat POST ${base}/api/chat -> HTTP ${r.status} ${r.statusText}`, detail.slice(0, 300));
+        throw new Error(`HTTP ${r.status} on ${base}`);
+      }
+      return r.json();
+    }
+
+    try {
+      let data;
+      try {
+        data = await postChat(apiBase);
+      } catch (err) {
+        console.error(`SAGE chat request failed via ${apiBase}:`, err);
+        // network/CORS hiccup on one stack — retry transparently on the other
+        const alt = apiBase === API ? API_FALLBACK : API;
+        data = await postChat(alt);
+        setApiBase(alt);
+      }
       setMessages((m) => [
         ...m,
         { role: "assistant", content: data.reply, documents: data.state?.documents ?? [] },
       ]);
       if (data.state) setState(data.state);
       setOnline(true);
-    } catch {
+    } catch (err) {
+      console.error("SAGE chat unreachable on both bases:", err);
       setMessages((m) => [
         ...m,
         {
           role: "assistant",
-          content: "Cannot reach the SAGE backend on " + API + ". Is uvicorn running?",
+          content: `Cannot reach the SAGE backend on ${apiBase} or ${API_FALLBACK}. Is uvicorn running? (see browser console for details)`,
         },
       ]);
       setOnline(false);
