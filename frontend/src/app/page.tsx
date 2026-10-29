@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
+import { AuroraHero } from "@/components/ui/hero";
 
 const API = "http://localhost:8001";
 const API_FALLBACK = "http://127.0.0.1:8001";
@@ -89,12 +90,92 @@ function formatEventDate(iso: string) {
   });
 }
 
-function DashboardApp({ initialPrompt }: { initialPrompt?: string | null }) {
+function StatePanels({ state }: { state: AgentState }) {
+  const macros = state.macros;
+  return (
+    <aside className="flex h-full w-[21rem] flex-col gap-5 overflow-y-auto overflow-x-hidden pb-1">
+        <section className="rounded-3xl border border-white/10 bg-white/[0.07] p-4 backdrop-blur-xl">
+          <h2 className="mb-3 font-[family-name:var(--font-mono,ui-monospace)] text-[10px] uppercase tracking-[0.28em] text-zinc-400">
+            Macro Tracker
+            <span className="float-right normal-case text-zinc-500/80">{macros.date}</span>
+          </h2>
+          <div className="flex flex-col gap-4">
+            <ProgressBar
+              label="Calories"
+              unit="kcal"
+              value={macros.totals.calories}
+              max={macros.targets.calories}
+              barClass="bg-amber-300"
+            />
+            <ProgressBar
+              label="Protein"
+              unit="g"
+              value={macros.totals.protein}
+              max={macros.targets.protein}
+              barClass="bg-emerald-300"
+            />
+          </div>
+          {macros.entries.length > 0 && (
+            <ul className="mt-4 space-y-1.5 border-t border-white/10 pt-3">
+              {macros.entries.map((e, i) => (
+                <li key={i} className="flex justify-between gap-2 text-xs">
+                  <span className="truncate text-zinc-300/90">{e.label}</span>
+                  <span className="shrink-0 font-[family-name:var(--font-mono,ui-monospace)] text-zinc-400/90">
+                    {Math.round(e.calories)}kcal · {Math.round(e.protein)}p
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        <section className="rounded-3xl border border-white/10 bg-white/[0.07] p-4 backdrop-blur-xl">
+          <h2 className="mb-3 font-[family-name:var(--font-mono,ui-monospace)] text-[10px] uppercase tracking-[0.28em] text-zinc-400">
+            Upcoming Schedule
+          </h2>
+          {state.schedule.length === 0 ? (
+            <p className="text-xs text-zinc-500/80">No upcoming events.</p>
+          ) : (
+            <div className="flex flex-col gap-2.5">
+              {state.schedule.map((ev, i) => (
+                <div
+                  key={i}
+                  className="rounded-2xl border border-white/10 bg-black/30 p-3 transition-colors hover:border-white/20"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="text-sm font-medium text-zinc-100">{ev.title}</p>
+                    {ev.course && (
+                      <span className="shrink-0 rounded bg-white/10 px-1.5 py-0.5 font-[family-name:var(--font-mono,ui-monospace)] text-[10px] text-emerald-300/90">
+                        {ev.course}
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-1.5 font-[family-name:var(--font-mono,ui-monospace)] text-xs text-zinc-400/90">
+                    {formatEventDate(ev.date)}
+                  </p>
+                  {ev.location && (
+                    <p className="mt-0.5 text-xs text-zinc-500">{ev.location}</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+    </aside>
+  );
+}
+
+function DashboardApp({
+  initialPrompt,
+  onState,
+}: {
+  initialPrompt?: string | null;
+  onState: (s: AgentState) => void;
+}) {
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [online, setOnline] = useState<boolean | null>(null);
-  const [state, setState] = useState<AgentState>(EMPTY_STATE);
   const logRef = useRef<HTMLDivElement>(null);
   const [apiBase, setApiBase] = useState(API);
 
@@ -110,7 +191,7 @@ function DashboardApp({ initialPrompt }: { initialPrompt?: string | null }) {
           return false;
         }
         const s: AgentState = await r.json();
-        setState(s);
+        onState(s);
         setApiBase(base);
         return true;
       } catch (err) {
@@ -306,7 +387,7 @@ function DashboardApp({ initialPrompt }: { initialPrompt?: string | null }) {
         return;
       }
       const data = await r.json();
-      if (data.state) setState(data.state);
+      if (data.state) onState(data.state);
       if (data.status === "ignored") {
         setTransientStatus(`frame ignored (${data.reason})`);
       } else if (data.status === "assignment_scheduled") {
@@ -408,7 +489,7 @@ function DashboardApp({ initialPrompt }: { initialPrompt?: string | null }) {
         ...m,
         { role: "assistant", content: data.reply, documents: data.state?.documents ?? [] },
       ]);
-      if (data.state) setState(data.state);
+      if (data.state) onState(data.state);
       setOnline(true);
     } catch (err: any) {
       const offlineError =
@@ -444,10 +525,8 @@ function DashboardApp({ initialPrompt }: { initialPrompt?: string | null }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const macros = state.macros;
-
   return (
-    <div id="docs" className="flex h-full w-full overflow-hidden items-stretch gap-5 px-4 py-5 text-zinc-100 sm:px-6">
+    <div id="docs" className="relative h-full w-full text-zinc-100">
       <video ref={videoRef} className="hidden" autoPlay muted playsInline />
       <div className="fixed right-5 top-5 z-30 flex items-center gap-2 rounded-full border border-white/10 bg-black/35 px-3 py-1.5 font-[family-name:var(--font-mono,ui-monospace)] text-[10px] uppercase tracking-[0.22em] text-zinc-400 backdrop-blur-md">
         <span
@@ -470,7 +549,7 @@ function DashboardApp({ initialPrompt }: { initialPrompt?: string | null }) {
 
       <main
         id="chat"
-        className="relative z-10 flex h-full min-h-0 flex-1 flex-col overflow-hidden rounded-3xl border border-white/10 bg-white/[0.07] shadow-[0_10px_70px_rgba(0,0,0,0.45)] backdrop-blur-xl"
+        className="relative z-10 flex h-full min-h-0 w-full flex-col overflow-hidden rounded-3xl border border-white/10 bg-white/[0.07] shadow-[0_10px_70px_rgba(0,0,0,0.45)] backdrop-blur-xl"
       >
         <div className="flex h-11 shrink-0 items-center border-b border-white/[0.07] px-5">
           <span className="font-[family-name:var(--font-mono,ui-monospace)] text-[10px] uppercase tracking-[0.35em] text-emerald-300/80">
@@ -555,91 +634,38 @@ function DashboardApp({ initialPrompt }: { initialPrompt?: string | null }) {
         </motion.div>
       </main>
 
-      <aside className="hidden w-[21rem] shrink-0 flex-col gap-5 overflow-y-auto overflow-x-hidden pb-1 lg:flex">
-        <section className="rounded-3xl border border-white/10 bg-white/[0.07] p-4 backdrop-blur-xl">
-          <h2 className="mb-3 font-[family-name:var(--font-mono,ui-monospace)] text-[10px] uppercase tracking-[0.28em] text-zinc-400">
-            Macro Tracker
-            <span className="float-right normal-case text-zinc-500/80">{macros.date}</span>
-          </h2>
-          <div className="flex flex-col gap-4">
-            <ProgressBar
-              label="Calories"
-              unit="kcal"
-              value={macros.totals.calories}
-              max={macros.targets.calories}
-              barClass="bg-amber-300"
-            />
-            <ProgressBar
-              label="Protein"
-              unit="g"
-              value={macros.totals.protein}
-              max={macros.targets.protein}
-              barClass="bg-emerald-300"
-            />
-          </div>
-          {macros.entries.length > 0 && (
-            <ul className="mt-4 space-y-1.5 border-t border-white/10 pt-3">
-              {macros.entries.map((e, i) => (
-                <li key={i} className="flex justify-between gap-2 text-xs">
-                  <span className="truncate text-zinc-300/90">{e.label}</span>
-                  <span className="shrink-0 font-[family-name:var(--font-mono,ui-monospace)] text-zinc-400/90">
-                    {Math.round(e.calories)}kcal · {Math.round(e.protein)}p
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-
-        <section className="rounded-3xl border border-white/10 bg-white/[0.07] p-4 backdrop-blur-xl">
-          <h2 className="mb-3 font-[family-name:var(--font-mono,ui-monospace)] text-[10px] uppercase tracking-[0.28em] text-zinc-400">
-            Upcoming Schedule
-          </h2>
-          {state.schedule.length === 0 ? (
-            <p className="text-xs text-zinc-500/80">No upcoming events.</p>
-          ) : (
-            <div className="flex flex-col gap-2.5">
-              {state.schedule.map((ev, i) => (
-                <div
-                  key={i}
-                  className="rounded-2xl border border-white/10 bg-black/30 p-3 transition-colors hover:border-white/20"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <p className="text-sm font-medium text-zinc-100">{ev.title}</p>
-                    {ev.course && (
-                      <span className="shrink-0 rounded bg-white/10 px-1.5 py-0.5 font-[family-name:var(--font-mono,ui-monospace)] text-[10px] text-emerald-300/90">
-                        {ev.course}
-                      </span>
-                    )}
-                  </div>
-                  <p className="mt-1.5 font-[family-name:var(--font-mono,ui-monospace)] text-xs text-zinc-400/90">
-                    {formatEventDate(ev.date)}
-                  </p>
-                  {ev.location && (
-                    <p className="mt-0.5 text-xs text-zinc-500">{ev.location}</p>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
-      </aside>
     </div>
   );
 }
 
 export default function SAGEHome() {
-  // 250ms ambient dark phase -> centered landing view -> morphs into the
-  // full dashboard when the first prompt goes out
+  // 250ms ambient dark phase -> landing view fills only the chat column
+  // (macro tracker + schedule stay visible) -> morphs into the workspace
+  // when the first prompt goes out
   const [booted, setBooted] = useState(false);
   const [isStarted, setIsStarted] = useState(false);
   const [pendingPrompt, setPendingPrompt] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
+  const [agentState, setAgentState] = useState<AgentState>(EMPTY_STATE);
 
   useEffect(() => {
     const t = setTimeout(() => setBooted(true), 250);
     return () => clearTimeout(t);
   }, []);
+
+  useEffect(() => {
+    if (!booted) return;
+    let alive = true;
+    fetch(`${API}/api/state`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((s) => {
+        if (alive && s) setAgentState(s);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [booted]);
 
   function startSession(prompt: string) {
     const trimmed = prompt.trim();
@@ -650,99 +676,116 @@ export default function SAGEHome() {
 
   return (
     <div className="relative h-screen overflow-hidden bg-[#08080B] text-zinc-100">
-      {/* ambient green/teal glow canvas (visible during the boot phase) */}
-      <motion.div
-        aria-hidden
-        className="pointer-events-none absolute inset-0 z-0"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.8 }}
-      >
-        <div className="absolute inset-0 bg-[#08080B]" />
-        <div className="absolute -top-44 right-[-8%] h-[36rem] w-[36rem] rounded-full bg-emerald-500/25 blur-[130px]" />
-        <div className="absolute bottom-[-16%] left-[-10%] h-[38rem] w-[34rem] rounded-full bg-teal-500/20 blur-[140px]" />
-        <div className="absolute left-1/2 top-1/4 h-[30rem] w-[30rem] -translate-x-1/2 rounded-full bg-cyan-500/10 blur-[120px]" />
-      </motion.div>
+      <div className="fixed inset-0 z-0">
+        {/* green -> cyan -> teal iridescent ramp */}
+        <AuroraHero
+          eyebrow=""
+          headline=""
+          description=""
+          meta={[]}
+          colors={["#3DDC97", "#38CFF2", "#2DD4BF"]}
+        />
+      </div>
 
-      <AnimatePresence>
-        {booted && !isStarted && (
-          <motion.div
-            key="landing"
-            className="absolute inset-0 z-10 flex h-full flex-col items-center justify-center px-6"
-            initial={{ opacity: 0, y: 24, scale: 0.985 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -18, scale: 0.99 }}
-            transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
-          >
-            <h1 className="max-w-xl text-center text-4xl font-semibold tracking-tight text-zinc-50 sm:text-5xl"
-                style={{ fontFamily: "var(--font-instrument), 'Instrument Sans', sans-serif" }}>
-              Welcome back, where should we begin?
-            </h1>
+      <div className="relative z-10 flex h-full w-full items-stretch gap-5 px-4 py-5 sm:px-6">
+        <div className="relative min-w-0 flex-1">
+          <AnimatePresence>
+            {booted && !isStarted && (
+              <motion.div
+                key="landing"
+                className="absolute inset-0 z-10"
+                initial={{ opacity: 0, y: 24, scale: 0.985 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -18, scale: 0.99 }}
+                transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+              >
+                <div className="flex h-full w-full flex-col items-center justify-center rounded-3xl border border-white/10 bg-white/[0.07] px-6 shadow-[0_10px_70px_rgba(0,0,0,0.45)] backdrop-blur-xl">
+                  <h1
+                    className="max-w-xl text-center text-3xl font-semibold tracking-tight text-zinc-50 sm:text-4xl"
+                    style={{ fontFamily: "var(--font-instrument), 'Instrument Sans', sans-serif" }}
+                  >
+                    Welcome back, where should we begin?
+                  </h1>
 
+                  <motion.div
+                    layoutId="sage-input"
+                    transition={{ layout: { duration: 0.5, ease: [0.22, 1, 0.36, 1] } }}
+                    className="mt-10 flex w-[min(100%,36rem)] items-center gap-2 rounded-3xl border border-white/15 bg-black/30 p-3 shadow-[0_14px_60px_rgba(0,0,0,0.5)] backdrop-blur-xl"
+                    initial={{ opacity: 0, y: 14 }}
+                    animate={{ opacity: 1, y: 0 }}
+                  >
+                    <button
+                      title="Snap or attach (coming soon)"
+                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.05] text-zinc-400 transition-colors hover:border-white/20 hover:text-zinc-200"
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+                      </svg>
+                    </button>
+                    <input
+                      value={draft}
+                      onChange={(e) => setDraft(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && startSession(draft)}
+                      placeholder="Ask SAGE..."
+                      className="h-10 flex-1 bg-transparent text-sm text-zinc-100 outline-none placeholder:text-zinc-500"
+                    />
+                    <button
+                      onClick={() => startSession(draft)}
+                      disabled={!draft.trim()}
+                      title="Send"
+                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-emerald-400/90 text-[#08130d] transition-all hover:bg-emerald-300 hover:scale-105 disabled:opacity-30"
+                    >
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M12 19V5M5 12l7-7 7 7" />
+                      </svg>
+                    </button>
+                  </motion.div>
+
+                  <div className="mt-7 flex flex-wrap items-center justify-center gap-3">
+                    {[
+                      "Summarize my macros for today",
+                      "Check upcoming class schedule",
+                      "Solve physics / math problem",
+                    ].map((q) => (
+                      <button
+                        key={q}
+                        onClick={() => startSession(q)}
+                        className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 font-[family-name:var(--font-mono,ui-monospace)] text-xs text-zinc-300 backdrop-blur-md transition-colors hover:border-white/25 hover:bg-white/[0.09] hover:text-zinc-100"
+                      >
+                        {q}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {isStarted && (
             <motion.div
-              layoutId="sage-input"
-              transition={{ layout: { duration: 0.5, ease: [0.22, 1, 0.36, 1] } }}
-              className="mt-12 flex w-[min(100%,42rem)] items-center gap-2 rounded-3xl border border-white/10 bg-white/[0.07] p-3 shadow-[0_14px_60px_rgba(0,0,0,0.5)] backdrop-blur-xl"
-              initial={{ opacity: 0, y: 14 }}
-              animate={{ opacity: 1, y: 0 }}
+              key="dashboard"
+              className="absolute inset-0"
+              initial={{ opacity: 0, y: 34, scale: 0.99 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              transition={{ type: "spring", stiffness: 80, damping: 18 }}
             >
-              <button
-                title="Snap or attach (coming soon)"
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.05] text-zinc-400 transition-colors hover:border-white/20 hover:text-zinc-200"
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48" />
-                </svg>
-              </button>
-              <input
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && startSession(draft)}
-                placeholder="Ask SAGE..."
-                className="h-10 flex-1 bg-transparent text-sm text-zinc-100 outline-none placeholder:text-zinc-500"
-              />
-              <button
-                onClick={() => startSession(draft)}
-                disabled={!draft.trim()}
-                title="Send"
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-emerald-400/90 text-[#08130d] transition-all hover:bg-emerald-300 hover:scale-105 disabled:opacity-30"
-              >
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12 19V5M5 12l7-7 7 7" />
-                </svg>
-              </button>
+              <DashboardApp initialPrompt={pendingPrompt} onState={setAgentState} />
             </motion.div>
+          )}
+        </div>
 
-            <div className="mt-7 flex flex-wrap items-center justify-center gap-3">
-              {[
-                "Summarize my macros for today",
-                "Check upcoming class schedule",
-                "Solve physics / math problem",
-              ].map((q) => (
-                <button
-                  key={q}
-                  onClick={() => startSession(q)}
-                  className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 font-[family-name:var(--font-mono,ui-monospace)] text-xs text-zinc-300 backdrop-blur-md transition-colors hover:border-white/25 hover:bg-white/[0.09] hover:text-zinc-100"
-                >
-                  {q}
-                </button>
-              ))}
-            </div>
+        {booted && (
+          <motion.div
+            key="panels"
+            className="hidden h-full min-h-0 shrink-0 lg:block"
+            initial={{ opacity: 0, y: 14 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.08, ease: [0.22, 1, 0.36, 1] }}
+          >
+            <StatePanels state={agentState} />
           </motion.div>
         )}
-      </AnimatePresence>
-
-      {isStarted && (
-        <motion.div
-          key="dashboard"
-          className="relative z-10 h-full"
-          initial={{ opacity: 0, y: 34, scale: 0.99 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          transition={{ type: "spring", stiffness: 80, damping: 18 }}
-        >
-          <DashboardApp initialPrompt={pendingPrompt} />
-        </motion.div>
-      )}
+      </div>
     </div>
   );
 }
