@@ -106,7 +106,23 @@ export default function Home() {
         setOnline(true);
       })
       .catch(() => setOnline(false));
+
+    fetch(`${API}/api/history`)
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((h) => {
+        if (Array.isArray(h.messages)) {
+          setMessages(h.messages.map((m: { role: "user" | "assistant" | "system"; content: string }) => ({ role: m.role, content: m.content })));
+        }
+      })
+      .catch(() => {});
   }, []);
+
+  async function clearHistory() {
+    try {
+      await fetch(`${API}/api/history`, { method: "DELETE" });
+    } catch {}
+    setMessages([]);
+  }
 
   useEffect(() => {
     logRef.current?.scrollTo({ top: logRef.current.scrollHeight });
@@ -163,17 +179,30 @@ export default function Home() {
             Student Assistant for Growth and Education
           </span>
         </div>
-        <div className="flex items-center gap-2 font-mono text-xs text-zinc-500">
-          <span
-            className={`h-2 w-2 rounded-full ${
-              online === null
-                ? "animate-pulse bg-zinc-500"
-                : online
-                  ? "bg-emerald-400"
-                  : "bg-red-500"
-            }`}
-          />
-          {online === null ? "connecting" : online ? "backend online :8001" : "backend offline"}
+        <div className="flex items-center gap-4 font-mono text-xs text-zinc-500">
+          <span className="flex items-center gap-2">
+            <span
+              className={`h-2 w-2 rounded-full ${
+                online === null
+                  ? "animate-pulse bg-zinc-500"
+                  : online
+                    ? "bg-emerald-400"
+                    : "bg-red-500"
+              }`}
+            />
+            {online === null
+              ? "connecting"
+              : online
+                ? "backend online :8001"
+                : "backend offline"}
+          </span>
+          <button
+            onClick={clearHistory}
+            title="Clear chat history and start a fresh session"
+            className="rounded-lg border border-zinc-800 px-2.5 py-1 text-xs text-zinc-400 transition-colors hover:border-red-500/60 hover:text-red-400"
+          >
+            Clear History
+          </button>
         </div>
       </header>
 
@@ -218,7 +247,16 @@ export default function Home() {
                 </div>
               ))}
               {sending && (
-                <div className="font-mono text-xs text-zinc-600">sage is thinking…</div>
+                <div className="flex items-center gap-2.5 px-1">
+                  <div className="flex gap-1">
+                    <span className="h-2 w-2 animate-bounce rounded-full bg-emerald-400 [animation-delay:0ms]" />
+                    <span className="h-2 w-2 animate-bounce rounded-full bg-emerald-400 [animation-delay:150ms]" />
+                    <span className="h-2 w-2 animate-bounce rounded-full bg-emerald-400 [animation-delay:300ms]" />
+                  </div>
+                  <span className="font-mono text-xs text-zinc-600">
+                    sage is thinking
+                  </span>
+                </div>
               )}
             </div>
           </div>

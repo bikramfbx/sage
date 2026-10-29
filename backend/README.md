@@ -33,6 +33,9 @@ The repo-root `.env` supplies `NEBIUS_API_KEY`, `NEBIUS_BASE_URL`, and
   `documents` (RAG hits). Falls back to a deterministic offline mode if the
   LLM is unreachable.
 - `GET /api/state` — current state snapshot (widgets use this on load)
+- `GET /api/history` — persisted conversation turns for dashboard restore
+- `DELETE /api/history` — wipe chat history + compressed summary (macros
+  and schedule state are untouched)
 
 ## Architecture notes
 

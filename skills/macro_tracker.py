@@ -111,6 +111,39 @@ class MacroTracker:
         self._save()
         return entry
 
+    def find_entries(self, food_keyword: str) -> List[Dict[str, Any]]:
+        """Today's entries whose label contains the keyword (case-insensitive)."""
+        keyword = str(food_keyword).strip().lower()
+        today = datetime.now().date().isoformat()
+        return [
+            e
+            for e in self.entries
+            if e["time"].startswith(today) and keyword in e["label"].lower()
+        ]
+
+    def edit_macro_entry(
+        self, food_keyword: str, corrected_calories: float, corrected_protein_g: float
+    ) -> Optional[Dict[str, Any]]:
+        """Correct an already-logged entry for today, most recent match wins.
+
+        Updates calories/protein in place (and adjusts the entry label only if
+        the keyword isn't already in it), recalculates daily totals, and saves
+        back to disk. Returns the updated entry plus new totals, or None when
+        no matching entry exists.
+        """
+        matches = self.find_entries(food_keyword)
+        if not matches:
+            return None
+        entry = matches[-1]
+        entry["calories"] = float(corrected_calories)
+        entry["protein"] = float(corrected_protein_g)
+        self._save()
+        return {
+            "updated": entry,
+            "today_totals": self.today_totals(),
+            "targets": self.targets,
+        }
+
     def today_totals(self) -> Dict[str, float]:
         today = datetime.now().date().isoformat()
         calories = sum(e["calories"] for e in self.entries if e["time"].startswith(today))
