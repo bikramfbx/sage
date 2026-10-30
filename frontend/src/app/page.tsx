@@ -1,11 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { AuroraHero } from "@/components/ui/hero";
 
-const API = "http://localhost:8001";
-const API_FALLBACK = "http://127.0.0.1:8001";
+// backend binds 127.0.0.1; localhost can stall on IPv6 (::1) in some
+// environments before the browser falls back, so probe IPv4 first
+const API = "http://127.0.0.1:8001";
+const API_FALLBACK = "http://localhost:8001";
 
 type MacroEntry = { label: string; calories: number; protein: number; time: string };
 type MacrosState = {
@@ -312,13 +314,16 @@ function formatPerceptionReply(data: any): string {
 function DashboardApp({
   initialPrompt,
   initialImage,
+  messages,
+  setMessages,
   onState,
 }: {
   initialPrompt?: string | null;
   initialImage?: File | null;
+  messages: ChatMsg[];
+  setMessages: Dispatch<SetStateAction<ChatMsg[]>>;
   onState: (s: AgentState) => void;
 }) {
-  const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [online, setOnline] = useState<boolean | null>(null);
@@ -609,13 +614,23 @@ function DashboardApp({
 
   async function sendPerceive(text: string, image: File) {
     if (sending) return;
-    const previewUrl = URL.createObjectURL(image);
-    objectUrlsRef.current.push(previewUrl);
-    // immediate user bubble with the inline attachment thumbnail
-    setMessages((m) => [
-      ...m,
-      { role: "user", content: text || "Analyze this image", imageUrl: previewUrl },
-    ]);
+    // the landing handler may have already appended this exact user turn
+    // (seeded bubble) — never duplicate it
+    const lastMsg = messages[messages.length - 1];
+    const seeded = !!(
+      lastMsg &&
+      lastMsg.role === "user" &&
+      lastMsg.content === (text || "Analyze this image")
+    );
+    if (!seeded) {
+      const previewUrl = URL.createObjectURL(image);
+      objectUrlsRef.current.push(previewUrl);
+      // immediate user bubble with the inline attachment thumbnail
+      setMessages((m) => [
+        ...m,
+        { role: "user", content: text || "Analyze this image", imageUrl: previewUrl },
+      ]);
+    }
     setSending(true);
     const form = new FormData();
     form.append("image", image);
@@ -677,11 +692,16 @@ function DashboardApp({
       await sendPerceive(text, image);
       return;
     }
+    // the landing handler may have already appended this exact user turn
+    // (seeded bubble) — never duplicate it and never double-count it in
+    // the API history payload
+    const lastMsg = messages[messages.length - 1];
+    const seeded = !!(lastMsg && lastMsg.role === "user" && lastMsg.content === text && !lastMsg.imageUrl);
     const history: { role: "user" | "assistant" | "system"; content: string }[] = [
       ...messages.map(({ role, content }) => ({ role, content })),
-      { role: "user", content: text },
+      ...(seeded ? [] : [{ role: "user" as const, content: text }]),
     ];
-    setMessages((m) => [...m, { role: "user", content: text }]);
+    if (!seeded) setMessages((m) => [...m, { role: "user", content: text }]);
     setSending(true);
 
     // context window slicing: keep the payload safely under the 64-item
@@ -895,7 +915,7 @@ function DashboardApp({
             />
             <button
               onClick={() => send()}
-              disabled={sending || !input.trim()}
+              disabled={sending || (!input.trim() && !pendingImage)}
               className="rounded-xl bg-emerald-400/75 px-5 py-2.5 text-sm font-semibold text-[#08130d] backdrop-blur-md transition-colors hover:bg-emerald-300 disabled:opacity-40"
             >
               Send
@@ -917,7 +937,14 @@ export default function SAGEHome() {
   const [pendingPrompt, setPendingPrompt] = useState<string | null>(null);
   const [pendingImage, setPendingImage] = useState<File | null>(null);
   const [draft, setDraft] = useState("");
+  const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [agentState, setAgentState] = useState<AgentState>(EMPTY_STATE);
+  const objectUrlsRef = useRef<string[]>([]);
+
+  useEffect(() => {
+    const urls = objectUrlsRef.current;
+    return () => urls.forEach((u) => URL.revokeObjectURL(u));
+  }, []);
 
   useEffect(() => {
     const t = setTimeout(() => setBooted(true), 250);
@@ -941,6 +968,18 @@ export default function SAGEHome() {
   function startSession(prompt: string, image: File | null = null) {
     const trimmed = prompt.trim();
     if (!trimmed && !image) return;
+    // optimistic user bubble BEFORE the transition/API call so the
+    // prompt is visible the instant the dashboard expands
+    const previewUrl = image ? URL.createObjectURL(image) : undefined;
+    if (previewUrl) objectUrlsRef.current.push(previewUrl);
+    setMessages((prev) => [
+      ...prev,
+      {
+        role: "user",
+        content: trimmed || "Analyze this image",
+        ...(previewUrl ? { imageUrl: previewUrl } : {}),
+      },
+    ]);
     setPendingPrompt(trimmed || null);
     setPendingImage(image);
     setDraft("");
@@ -1036,7 +1075,13 @@ export default function SAGEHome() {
               animate={{ opacity: 1, y: 0, scale: 1 }}
               transition={{ type: "spring", stiffness: 80, damping: 18 }}
             >
-              <DashboardApp initialPrompt={pendingPrompt} initialImage={pendingImage} onState={setAgentState} />
+              <DashboardApp
+                initialPrompt={pendingPrompt}
+                initialImage={pendingImage}
+                messages={messages}
+                setMessages={setMessages}
+                onState={setAgentState}
+              />
             </motion.div>
           )}
         </div>
