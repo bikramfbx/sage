@@ -171,6 +171,31 @@ async def _process_food(
     entry = result["entry"]
     today = result["today_totals"]
     targets = result["targets"]
+
+    # rich markdown breakdown — passed verbatim into the assistant chat
+    # bubble by the frontend (data.summary)
+    headline = (
+        "**Meal Already Tracked Today** 🥗"
+        if result["duplicate"]
+        else "**Meal Logged Successfully!** 🥗"
+    )
+    itemized = "\n".join(
+        f"- **{item['name']}:** {item['calories']:.0f} kcal · "
+        f"{item['protein_g']:.0f}g protein · {item['carbs_g']:.0f}g carbs · "
+        f"{item['fats_g']:.0f}g fats"
+        for item in analysis["items"]
+    )
+    summary = (
+        f"{headline}\n\n"
+        "**Estimated Macros:**\n"
+        f"- **Calories:** {totals['calories']:.0f} kcal\n"
+        f"- **Protein:** {totals['protein']:.0f}g\n"
+        f"- **Carbs:** {totals['carbs']:.0f}g\n"
+        f"- **Fats:** {totals['fats']:.0f}g\n\n"
+        f"{itemized}\n\n"
+        "*Updated today's totals in your Macro Tracker.*"
+    )
+
     prefix = "Already tracked: " if result["duplicate"] else "Vision perception: logged "
     log_line = (
         f"{prefix}{analysis['summary']} — ~{totals['calories']:.0f} kcal / "
@@ -182,7 +207,7 @@ async def _process_food(
     return PerceiveUploadOutcome(
         status="food_logged",
         type="FOOD_MEAL",
-        summary=analysis["summary"],
+        summary=summary,
         macros={
             "items": analysis["items"],
             "entry": entry,

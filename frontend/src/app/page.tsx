@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { AuroraHero } from "@/components/ui/hero";
 
@@ -30,6 +30,7 @@ type ChatMsg = {
   role: "user" | "assistant" | "system";
   content: string;
   documents?: DocumentRef[];
+  imageUrl?: string;
 };
 
 const EMPTY_STATE: AgentState = {
@@ -223,8 +224,53 @@ function ImageThumb({ image, onRemove }: { image: File; onRemove: () => void }) 
 
 const _n = (v: unknown) => (typeof v === "number" ? Math.round(v) : 0);
 
+// tiny inline markdown: **bold** and *italic* spans only
+function _md(text: string): ReactNode[] {
+  const parts: ReactNode[] = [];
+  const re = /\*\*(.+?)\*\*|\*(.+?)\*/g;
+  let last = 0;
+  let key = 0;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(text))) {
+    if (match.index > last) parts.push(text.slice(last, match.index));
+    if (match[1] !== undefined) {
+      parts.push(
+        <strong key={key++} className="font-semibold text-white">
+          {match[1]}
+        </strong>
+      );
+    } else {
+      parts.push(<em key={key++} className="italic">{match[2]}</em>);
+    }
+    last = re.lastIndex;
+  }
+  if (last < text.length) parts.push(text.slice(last));
+  return parts;
+}
+
+// block renderer for assistant bubbles: bullets, blank lines, bold/italic
+function MarkdownBlock({ content }: { content: string }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      {content.split("\n").map((line, k) => {
+        if (!line.trim()) return <div key={k} className="h-1.5" />;
+        const bullet = line.startsWith("- ") || line.startsWith("• ");
+        const body = bullet ? line.slice(2) : line;
+        return (
+          <div key={k} className={bullet ? "flex gap-2" : undefined}>
+            {bullet && <span className="shrink-0 text-emerald-300/80">•</span>}
+            <span>{_md(body)}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function formatPerceptionReply(data: any): string {
   if (data?.type === "FOOD_MEAL") {
+    // server now builds the rich markdown breakdown — prefer it verbatim
+    if (typeof data.summary === "string" && data.summary.trim()) return data.summary;
     const macros = data.macros ?? {};
     const items: any[] = Array.isArray(macros.items) ? macros.items : [];
     const totals = macros.today_totals ?? {};
@@ -532,9 +578,21 @@ function DashboardApp({
     }
   }
 
+  const objectUrlsRef = useRef<string[]>([]);
+  useEffect(() => {
+    const urls = objectUrlsRef.current;
+    return () => urls.forEach((u) => URL.revokeObjectURL(u));
+  }, []);
+
   async function sendPerceive(text: string, image: File) {
     if (sending) return;
-    setMessages((m) => [...m, { role: "user", content: text || "[image attached]" }]);
+    const previewUrl = URL.createObjectURL(image);
+    objectUrlsRef.current.push(previewUrl);
+    // immediate user bubble with the inline attachment thumbnail
+    setMessages((m) => [
+      ...m,
+      { role: "user", content: text || "Analyze this image", imageUrl: previewUrl },
+    ]);
     setSending(true);
     const form = new FormData();
     form.append("image", image);
@@ -750,7 +808,18 @@ function DashboardApp({
                       : "max-w-[85%] rounded-2xl rounded-bl-sm border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-zinc-200 backdrop-blur-sm"
                   }
                 >
-                  <p className="whitespace-pre-wrap">{m.content}</p>
+                  {m.imageUrl && (
+                    <img
+                      src={m.imageUrl}
+                      alt="attached"
+                      className="mb-2 max-h-48 w-auto max-w-full rounded-xl border border-white/20 object-cover"
+                    />
+                  )}
+                  {m.role === "assistant" ? (
+                    <MarkdownBlock content={m.content} />
+                  ) : (
+                    <p className="whitespace-pre-wrap">{m.content}</p>
+                  )}
                   {m.role === "assistant" && m.documents && m.documents.length > 0 && (
                     <div className="mt-2 flex flex-wrap gap-1.5 border-t border-white/10 pt-2">
                       {m.documents.map((d, j) => (
