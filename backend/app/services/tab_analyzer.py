@@ -38,9 +38,9 @@ ANALYZE_PROMPT = """You analyze a live screen/tab capture for a student copilot.
 Extract from the image:
 - course_code: a course code visible on screen (e.g. CS302, PHYS210), or null
 - topic_title: the main topic / assignment / document title on screen, or null
-- due_date: a deadline visible on screen as ISO 8601 (YYYY-MM-DDTHH:MM:SS). Resolve relative dates ("tomorrow", "next Friday") using today = {date} ({weekday}), local time {time}. null when none is stated.
+- due_date: a deadline visible on screen as ISO 8601 (YYYY-MM-DDTHH:MM:SS). EVERY date-like string counts: absolute formats ("Nov 18, 2026", "November 18, 2026", "18/11/2026", "2026-11-18"), relative phrases ("Next Wednesday", "tomorrow", "in 3 days"), and combinations with times ("Nov 18 at 11:59 PM"). Resolve relative dates using today = {date} ({weekday}), local time {time}. If several deadlines are visible, output the most prominent one. Output null ONLY when there is genuinely no date-like string anywhere on screen.
 - note_markdown: a concise markdown study note (under 180 words) of the study-relevant content on screen (definitions, formulas, steps, key points). No triple-backtick fences.
-- raw_text: the key text content verbatim, capped ~1500 chars
+- raw_text: the key text content verbatim, capped ~1500 chars. IMPORTANT: include verbatim any line that contains a date or deadline.
 
 Reply with pure JSON only, nothing before or after:
 {{"course_code": null, "topic_title": null, "due_date": null, "note_markdown": "", "raw_text": ""}}"""

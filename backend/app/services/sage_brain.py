@@ -24,8 +24,13 @@ from skills.web_search import search_web  # noqa: E402
 from app.core.config import settings  # noqa: E402
 from app.services.memory_manager import MemoryManager  # noqa: E402
 
-MAX_TOOL_ROUNDS = 5
+MAX_TOOL_ROUNDS = 3
 ACTIVE_WINDOW_MESSAGES = 12
+
+# search tools must not loop: two calls to the same search tool in one
+# turn means the context is already in the thread — synthesize instead
+SEARCH_TOOL_CAP = 2
+SEARCH_TOOLS = {"search_docs", "web_search"}
 
 DOC_INTENT = (
     r"\b(notes?|pdf|pdfs|document|documents|docs|syllabus|lecture|"
@@ -238,7 +243,9 @@ TOOLS = [
                 "lecture notes AND auto-captured study notes — plus scheduled "
                 "events. Use it whenever the user recalls something previously "
                 "seen or captured: 'what was assignment X about?', deadlines, "
-                "quizzes, lecture material. New captures are indexed automatically."
+                "quizzes, lecture material. New captures are indexed automatically. "
+                "Call it at most twice per question — once you have the passages, "
+                "synthesize the answer from them instead of searching again."
             ),
             "parameters": {
                 "type": "object",
@@ -401,6 +408,9 @@ class SageBrain:
                 hits = self.reader.search(query, top_k=3)
                 if hits:
                     collected["documents"] = hits
+                    # relevant context retrieved on this pass: the very next
+                    # call runs without tools and must synthesize from it
+                    collected["docs_hit"] = True
                     return {
                         "ok": True,
                         "local_results": hits,
@@ -498,12 +508,23 @@ class SageBrain:
         self, thread: List[Dict[str, Any]], collected: Dict[str, Any]
     ) -> str:
         empty_content_rounds = 0
+        tool_counts: Dict[str, int] = {}
+        force_final = False
+
+        def _caps_hit(names: List[str]) -> bool:
+            total = sum(tool_counts.values())
+            repeated_search = any(
+                n in SEARCH_TOOLS and tool_counts.get(n, 0) >= SEARCH_TOOL_CAP
+                for n in names
+            )
+            return total >= MAX_TOOL_ROUNDS or repeated_search
+
         for _ in range(MAX_TOOL_ROUNDS):
             response = await self.client.chat.completions.create(
                 model=self.model,
                 messages=thread,
-                tools=TOOLS,
-                tool_choice="auto",
+                tools=None if force_final else TOOLS,
+                tool_choice=None if force_final else "auto",
                 temperature=0.6,
                 max_tokens=1200,
             )
@@ -516,12 +537,12 @@ class SageBrain:
                     return content
                 empty_content_rounds += 1
                 if empty_content_rounds >= 2:
-                    return (
-                        "I thought about that a bit longer than I should have and "
-                        "didn't land anywhere useful — could you rephrase it?"
-                    )
+                    return self._synthesize_from_collected(collected)
                 thread.append({"role": "assistant", "content": ""})
                 continue
+
+            for tc in message.tool_calls:
+                tool_counts[tc.function.name] = tool_counts.get(tc.function.name, 0) + 1
 
             thread.append(
                 {
@@ -563,9 +584,47 @@ class SageBrain:
                     }
                 )
 
+            # once the cap is reached (or a search tool repeats), the very
+            # next call runs WITHOUT tools so the model must synthesize the
+            # final answer from the context it already gathered. A docs hit
+            # on this pass forces synthesis immediately — no redundant
+            # follow-up searches.
+            if collected.pop("docs_hit", None):
+                force_final = True
+            elif _caps_hit([tc.function.name for tc in message.tool_calls]):
+                force_final = True
+
+        # hard cap reached: one tool-less synthesis pass from the gathered
+        # context instead of a tool-limit error. Generous token budget —
+        # reasoning models spend the budget on CoT before emitting content.
+        try:
+            response = await self.client.chat.completions.create(
+                model=self.model,
+                messages=thread,
+                temperature=0.4,
+                max_tokens=2400,
+            )
+            content = self._clean_assistant_content(response.choices[0].message)
+            if content:
+                return content
+        except Exception:
+            logger.warning("Synthesis pass failed; falling back to collected context")
+
+        return self._synthesize_from_collected(collected)
+
+    def _synthesize_from_collected(self, collected: Dict[str, Any]) -> str:
+        """Graceful answer assembled from whatever tool context was
+        gathered during the turn (never a tool-limit error)."""
+        docs = collected.get("documents") or []
+        if docs:
+            lines = ["Here's what I found in your notes:"]
+            for d in docs[:3]:
+                page = f" (page {d['page']})" if d.get("page") else ""
+                lines.append(f"- {d['document']}{page}: {d['snippet']}")
+            return "\n".join(lines)
         return (
-            "I went back and forth on that one a few too many times and lost the thread. "
-            "Could you rephrase it for me?"
+            "I looked into that but didn't land on a solid answer before "
+            "running out of steps. Could you rephrase or narrow the question?"
         )
 
     def _fallback(self, message: str) -> Dict[str, Any]:

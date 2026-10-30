@@ -482,6 +482,9 @@ function DashboardApp({
   async function send(textArg?: string) {
     const text = (textArg ?? input).trim();
     if (sending) return;
+    if (!text) return;
+    // instant clear on dispatch: old queries never linger in the bar
+    if (!textArg) setInput("");
     // the landing handler may have already appended this exact user turn
     // (seeded bubble) — never duplicate it and never double-count it in
     // the API history payload
@@ -774,6 +777,15 @@ export default function SAGEHome() {
     setIsStarted(true);
   }
 
+  function submitLanding(raw: string) {
+    const trimmed = raw.trim();
+    if (!trimmed) return;
+    // clear the bar in THIS render so the AnimatePresence exit copy does
+    // not show stale text; start the session on the next frame
+    setDraft("");
+    requestAnimationFrame(() => startSession(trimmed));
+  }
+
   return (
     <div className="relative h-screen overflow-hidden bg-[#08080B] text-zinc-100">
       <div className="fixed inset-0 z-0">
@@ -818,12 +830,12 @@ export default function SAGEHome() {
                       <input
                         value={draft}
                         onChange={(e) => setDraft(e.target.value)}
-                        onKeyDown={(e) => e.key === "Enter" && startSession(draft)}
+                        onKeyDown={(e) => e.key === "Enter" && submitLanding(draft)}
                         placeholder="Ask SAGE..."
                         className="h-10 flex-1 bg-transparent text-sm text-zinc-100 outline-none placeholder:text-zinc-500"
                       />
                       <button
-                        onClick={() => startSession(draft)}
+                        onClick={() => submitLanding(draft)}
                         disabled={!draft.trim()}
                         title="Send"
                         className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-emerald-400/90 text-[#08130d] transition-all hover:bg-emerald-300 hover:scale-105 disabled:opacity-30"
