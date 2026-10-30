@@ -12,3 +12,4 @@ numpy==2.5.4
 sympy==1.14.0
 scipy==1.18.1
 matplotlib==3.11.2
+python-multipart==0.0.32
