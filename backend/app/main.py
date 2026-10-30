@@ -18,14 +18,6 @@ app = FastAPI(
     version="0.1.0",
 )
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.cors_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
 app.include_router(health.router, tags=["health"])
 app.include_router(chat.router, prefix="/api", tags=["chat"])
 app.include_router(state.router, prefix="/api", tags=["state"])
@@ -93,8 +85,19 @@ async def llm_guard_middleware(request: Request, call_next):
         )
     bucket.append(now)
     return await call_next(request)
-app.include_router(screen_copilot.router, prefix="/api", tags=["screen copilot"])
-app.include_router(widgets.router, prefix="/api", tags=["widgets"])
+
+
+# Registered after the llm_guard on purpose: add_middleware() prepends, so the
+# LAST-registered middleware runs OUTERMOST. CORSMiddleware must wrap the
+# guard, otherwise CORS preflights (OPTIONS) never get Access-Control-*
+# headers and browsers reject every cross-origin POST from the frontend.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.exception_handler(Exception)

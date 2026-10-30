@@ -5,10 +5,13 @@ import { AnimatePresence, motion } from "motion/react";
 import { AuroraHero } from "@/components/ui/hero";
 import { resolveWidget, type WidgetData } from "@/components/widgets/WidgetRegistry";
 
-// backend binds 127.0.0.1; localhost can stall on IPv6 (::1) in some
-// environments before the browser falls back, so probe IPv4 first
-const API = "http://127.0.0.1:8001";
-const API_FALLBACK = "http://localhost:8001";
+// backend base URL: NEXT_PUBLIC_API_URL (baked in at build time, e.g. on
+// Vercel) with the public Render deploy as fallback; trailing slashes are
+// trimmed so `${API}/api/...` never produces a double slash. A locally
+// running uvicorn stays available as the secondary probe target.
+const API =
+  (process.env.NEXT_PUBLIC_API_URL || "https://sage-c6au.onrender.com").replace(/\/+$/, "");
+const API_FALLBACK = "http://127.0.0.1:8001";
 
 // client timezone for every backend request — reminder math and
 // "what time is it" answers must match the browser clock
