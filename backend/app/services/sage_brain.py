@@ -529,6 +529,17 @@ class SageBrain:
         collected["schedule_touched"] = True
         return {"event": event, "when_display": event["time"], "iso": when.isoformat(timespec="seconds")}
 
+    def _client_for(self, api_key_override: Optional[str]):
+        """Per-request client for BYOK judges; server key otherwise."""
+        if not api_key_override:
+            return self.client
+        return AsyncOpenAI(
+            base_url=settings.nebius_base_url,
+            api_key=api_key_override,
+            timeout=120.0,
+            max_retries=1,
+        )
+
     def _resolve_tz(self, user_timezone: Optional[str]) -> ZoneInfo:
         if user_timezone:
             try:
@@ -777,7 +788,9 @@ class SageBrain:
         thread: List[Dict[str, Any]],
         collected: Dict[str, Any],
         tzinfo: Optional[ZoneInfo] = None,
+        client=None,
     ) -> str:
+        client = client or self.client
         empty_content_rounds = 0
         tool_counts: Dict[str, int] = {}
         force_final = False
@@ -791,7 +804,7 @@ class SageBrain:
             return total >= MAX_TOOL_ROUNDS or repeated_search
 
         for _ in range(MAX_TOOL_ROUNDS):
-            response = await self.client.chat.completions.create(
+            response = await client.chat.completions.create(
                 model=self.model,
                 messages=thread,
                 tools=None if force_final else TOOLS,
@@ -869,7 +882,7 @@ class SageBrain:
         # context instead of a tool-limit error. Generous token budget —
         # reasoning models spend the budget on CoT before emitting content.
         try:
-            response = await self.client.chat.completions.create(
+            response = await client.chat.completions.create(
                 model=self.model,
                 messages=thread,
                 temperature=0.4,
@@ -948,6 +961,7 @@ class SageBrain:
         messages: List[Dict[str, str]],
         conversation_id: Optional[str] = None,
         user_timezone: Optional[str] = None,
+        api_key_override: Optional[str] = None,
     ) -> Dict[str, Any]:
         tzinfo = self._resolve_tz(user_timezone)
         thread_messages = [
@@ -993,7 +1007,7 @@ class SageBrain:
                 thread.extend(
                     {"role": m["role"], "content": m["content"]} for m in window
                 )
-                reply = await self._run_agent(thread, collected, tzinfo)
+                reply = await self._run_agent(thread, collected, tzinfo, self._client_for(api_key_override))
                 result = {"reply": reply, "state": self.build_state(collected.get("documents"))}
             except Exception as exc:
                 result = self._fallback(thread_messages[-1]["content"])

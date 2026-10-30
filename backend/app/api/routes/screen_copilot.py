@@ -1,6 +1,8 @@
 import asyncio
 import logging
 import re
+from typing import Optional
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from datetime import datetime, timedelta
 
@@ -185,9 +187,18 @@ async def screen_analyze(request: ScreenAnalyzeRequest):
                 )
                 for h in rag_hits
             ) or "(no local notes matched)"
-            answer = await _ask(request.frame_base64, request.question, rag_block)
+            answer = await _ask(
+                request.frame_base64,
+                request.question,
+                rag_block,
+                getattr(request.state, "nebius_override", None),
+            )
             return answer
-        return await _analyze(request.frame_base64, tzinfo)
+        return await _analyze(
+            request.frame_base64,
+            tzinfo,
+            getattr(request.state, "nebius_override", None),
+        )
     except HTTPException:
         raise
     except RuntimeError as exc:
@@ -197,11 +208,16 @@ async def screen_analyze(request: ScreenAnalyzeRequest):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-async def _ask(frame_b64: str, question: str, rag_block: str) -> ScreenAnalyzeOutcome:
+async def _ask(
+    frame_b64: str,
+    question: str,
+    rag_block: str,
+    api_key_override: Optional[str] = None,
+) -> ScreenAnalyzeOutcome:
     prompt = ASK_PROMPT.format(question=question, rag_block=rag_block)
     tab_analyzer.llm_calls += 1
     raw = await asyncio.to_thread(
-        _call_vlm, frame_b64, prompt, **tab_analyzer._creds(), system=ASK_SYSTEM
+        _call_vlm, frame_b64, prompt, **tab_analyzer._creds(api_key_override), system=ASK_SYSTEM
     )
     answer = extract_answer(raw)
     _remember(question, answer)
@@ -213,8 +229,10 @@ async def _ask(frame_b64: str, question: str, rag_block: str) -> ScreenAnalyzeOu
     )
 
 
-async def _analyze(frame_b64: str, tzinfo=None) -> ScreenAnalyzeOutcome:
-    result = await tab_analyzer.analyze_frame(frame_b64, tzinfo)
+async def _analyze(
+    frame_b64: str, tzinfo=None, api_key_override: Optional[str] = None
+) -> ScreenAnalyzeOutcome:
+    result = await tab_analyzer.analyze_frame(frame_b64, tzinfo, api_key_override)
     course = result.get("course_code")
     topic = result.get("topic_title")
     raw_text = result.get("raw_text") or ""

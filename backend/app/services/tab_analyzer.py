@@ -160,9 +160,9 @@ class TabAnalyzer:
     def __init__(self):
         self.llm_calls = 0
 
-    def _creds(self) -> Dict[str, str]:
+    def _creds(self, api_key_override: Optional[str] = None) -> Dict[str, str]:
         return {
-            "api_key": settings.nebius_api_key,
+            "api_key": api_key_override or settings.nebius_api_key,
             "base_url": settings.nebius_base_url,
             "model_id": settings.vision_model_id,
         }
@@ -170,7 +170,12 @@ class TabAnalyzer:
     def vision_available(self) -> bool:
         return bool(settings.nebius_api_key)
 
-    async def analyze_frame(self, frame_b64: str, tzinfo: Optional[ZoneInfo] = None) -> Dict[str, Any]:
+    async def analyze_frame(
+        self,
+        frame_b64: str,
+        tzinfo: Optional[ZoneInfo] = None,
+        api_key_override: Optional[str] = None,
+    ) -> Dict[str, Any]:
         """One VLM pass over the captured frame in analyze mode. Returns
         course_code, topic_title, due_date, note_markdown, raw_text —
         all redacted for persistence. Ask-mode prompting lives in the
@@ -183,7 +188,7 @@ class TabAnalyzer:
         )
         self.llm_calls += 1
         raw = await asyncio.to_thread(
-            _call_vlm, frame_b64, prompt, **self._creds()
+            _call_vlm, frame_b64, prompt, **self._creds(api_key_override)
         )
         decision = _parse_json_block(raw) or {}
         return {

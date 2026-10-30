@@ -33,7 +33,10 @@ async def chat(body: ChatRequest, request: Request):
         raise HTTPException(status_code=400, detail="Provide a 'messages' array or 'message'.")
     try:
         return await sage_brain.process(
-            thread, body.conversation_id, user_timezone=_client_tz(request)
+            thread,
+            body.conversation_id,
+            user_timezone=_client_tz(request),
+            api_key_override=getattr(request.state, "nebius_override", None),
         )
     except Exception:
         # sanitized: log full trace server-side only, generic detail out

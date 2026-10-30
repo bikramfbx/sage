@@ -26,6 +26,10 @@ class Settings(BaseSettings):
     # Vision-language model for live tab analysis (Nebius VLM)
     vision_model_id: str = "openbmb/MiniCPM-V-4_5"
 
+    # Judge/demo access: token-gated LLM endpoints with a per-session cap
+    judge_demo_token: str = "JUDGE_DEMO_2026"
+    judge_session_cap: int = 50
+
     @field_validator("cors_origins", mode="before")
     @classmethod
     def _strip_wildcards(cls, value):

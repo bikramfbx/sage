@@ -15,6 +15,28 @@ const API_FALLBACK = "http://localhost:8001";
 const USER_TIMEZONE =
   (typeof Intl !== "undefined" && Intl.DateTimeFormat().resolvedOptions().timeZone) || "UTC";
 const TZ_HEADERS = { "X-User-Timezone": USER_TIMEZONE };
+const JUDGE_DEMO_TOKEN = "JUDGE_DEMO_2026";
+
+function bootstrapJudgeToken() {
+  try {
+    const token = new URLSearchParams(window.location.search).get("demo_token");
+    if (token === JUDGE_DEMO_TOKEN) {
+      sessionStorage.setItem("sage_judge_token", token);
+    }
+  } catch {}
+}
+if (typeof window !== "undefined") bootstrapJudgeToken();
+
+function judgeAuthHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {};
+  try {
+    const token = sessionStorage.getItem("sage_judge_token");
+    if (token) headers["X-Judge-Token"] = token;
+    const apiKey = sessionStorage.getItem("sage_api_key");
+    if (apiKey) headers["X-Nebius-Api-Key"] = apiKey;
+  } catch {}
+  return headers;
+}
 
 type MacroEntry = { label: string; calories: number; protein: number; time: string };
 type MacrosState = {
@@ -192,11 +214,13 @@ function DashboardApp({
   messages,
   setMessages,
   onState,
+  onAuthRequired,
 }: {
   initialPrompt?: string | null;
   messages: ChatMsg[];
   setMessages: Dispatch<SetStateAction<ChatMsg[]>>;
   onState: (s: AgentState) => void;
+  onAuthRequired?: () => void;
 }) {
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
@@ -434,7 +458,7 @@ function DashboardApp({
   async function postScreen(base: string, payload: object) {
     const r = await fetch(`${base}/api/screen/analyze`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...TZ_HEADERS },
+      headers: { "Content-Type": "application/json", ...TZ_HEADERS, ...judgeAuthHeaders() },
       body: JSON.stringify(payload),
     });
     if (!r.ok) {
@@ -489,13 +513,16 @@ function DashboardApp({
     } catch (err: any) {
       console.error("SAGE screen copilot failed:", err);
       const offline = err?.kind !== "http";
+      if (err?.status === 401) onAuthRequired?.();
       setMessages((m) => [
         ...m,
         {
           role: "assistant",
           content: offline
             ? `Cannot reach the SAGE backend on ${apiBase} or ${API_FALLBACK}. Is uvicorn running?`
-            : `Screen copilot failed (HTTP ${err?.status ?? "?"}). Try again in a moment.`,
+            : `Screen copilot failed (HTTP ${err?.status ?? "?"}). ${
+                err?.status === 401 ? "A judge token or Nebius API key is required." : "Try again in a moment."
+              }`,
         },
       ]);
       if (offline) setOnline(false);
@@ -542,7 +569,7 @@ function DashboardApp({
       try {
         const r = await fetch(`${base}/api/chat`, {
           method: "POST",
-          headers: { "Content-Type": "application/json", ...TZ_HEADERS },
+          headers: { "Content-Type": "application/json", ...TZ_HEADERS, ...judgeAuthHeaders() },
           body: JSON.stringify({ messages: history.slice(-limit) }),
         });
         if (!r.ok) {
@@ -599,6 +626,16 @@ function DashboardApp({
           },
         ]);
         setOnline(false);
+      } else if (err.status === 401) {
+        onAuthRequired?.();
+        setMessages((m) => [
+          ...m,
+          {
+            role: "assistant",
+            content:
+              "Unauthorized (HTTP 401) — a judge token or Nebius API key is required for chat. Use the banner in the corner to authenticate.",
+          },
+        ]);
       } else {
         setTransientStatus(
           `backend rejected the message (HTTP ${err.status ?? "?"}) — context truncated`
@@ -829,10 +866,46 @@ export default function SAGEHome() {
   const [draft, setDraft] = useState("");
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [agentState, setAgentState] = useState<AgentState>(EMPTY_STATE);
+  const [authNeeded, setAuthNeeded] = useState(false);
+  const [keyDraft, setKeyDraft] = useState("");
+
   useEffect(() => {
     const t = setTimeout(() => setBooted(true), 250);
     return () => clearTimeout(t);
   }, []);
+
+  useEffect(() => {
+    if (!booted) return;
+    try {
+      if (sessionStorage.getItem("sage_banner_dismissed") === "1") return;
+      if (!sessionStorage.getItem("sage_judge_token") && !sessionStorage.getItem("sage_api_key")) {
+        setAuthNeeded(true);
+      }
+    } catch {}
+  }, [booted]);
+
+  function useDemoToken() {
+    try {
+      sessionStorage.setItem("sage_judge_token", JUDGE_DEMO_TOKEN);
+      sessionStorage.setItem("sage_banner_dismissed", "1");
+    } catch {}
+    setAuthNeeded(false);
+  }
+  function saveApiKey() {
+    const key = keyDraft.trim();
+    if (!key) return;
+    try {
+      sessionStorage.setItem("sage_api_key", key);
+      sessionStorage.setItem("sage_banner_dismissed", "1");
+    } catch {}
+    setAuthNeeded(false);
+  }
+  function dismissBanner() {
+    try {
+      sessionStorage.setItem("sage_banner_dismissed", "1");
+    } catch {}
+    setAuthNeeded(false);
+  }
 
   useEffect(() => {
     if (!booted) return;
@@ -1047,6 +1120,12 @@ export default function SAGEHome() {
             >
               <DashboardApp
                 initialPrompt={pendingPrompt}
+                onAuthRequired={() => {
+                  try {
+                    sessionStorage.removeItem("sage_banner_dismissed");
+                  } catch {}
+                  setAuthNeeded(true);
+                }}
                 messages={messages}
                 setMessages={setMessages}
                 onState={setAgentState}
@@ -1067,6 +1146,54 @@ export default function SAGEHome() {
           </motion.div>
         )}
       </div>
+
+      <AnimatePresence>
+        {authNeeded && (
+          <motion.div
+            className="fixed bottom-4 right-4 z-50 w-[19.5rem] rounded-2xl border border-zinc-800 bg-zinc-900/90 p-4 shadow-[0_18px_60px_rgba(0,0,0,0.6)] backdrop-blur-md"
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 8 }}
+            transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+          >
+            <div className="flex items-start justify-between gap-2">
+              <p className="text-xs leading-relaxed text-zinc-300">
+                <span className="font-semibold text-zinc-100">Judge Mode Active</span> — open the
+                app with{" "}
+                <code className="rounded bg-white/[0.07] px-1 py-0.5 font-[family-name:var(--font-mono,ui-monospace)] text-[10px] text-emerald-300">
+                  ?demo_token=JUDGE_DEMO_2026
+                </code>{" "}
+                or enter your Nebius API Key.
+              </p>
+              <button onClick={dismissBanner} title="Dismiss" className="shrink-0 text-zinc-500 hover:text-zinc-200">
+                ✕
+              </button>
+            </div>
+            <div className="mt-3 flex items-center gap-2">
+              <button
+                onClick={useDemoToken}
+                className="shrink-0 rounded-lg border border-emerald-300/40 bg-emerald-400/15 px-2.5 py-1.5 text-[11px] font-medium text-emerald-200 transition-colors hover:bg-emerald-400/25"
+              >
+                Use demo token
+              </button>
+              <input
+                value={keyDraft}
+                onChange={(e) => setKeyDraft(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && saveApiKey()}
+                placeholder="Nebius API key"
+                type="password"
+                className="min-w-0 flex-1 rounded-lg border border-white/10 bg-black/30 px-2 py-1.5 text-[11px] text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-emerald-300/40"
+              />
+              <button
+                onClick={saveApiKey}
+                className="shrink-0 rounded-lg bg-zinc-700 px-2.5 py-1.5 text-[11px] font-medium text-white transition-colors hover:bg-zinc-600"
+              >
+                Save
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
