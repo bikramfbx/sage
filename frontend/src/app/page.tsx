@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type Dispatch, type SetStateAction } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { AuroraHero } from "@/components/ui/hero";
 
@@ -197,6 +197,7 @@ function DashboardApp({
   const prevSigRef = useRef<number[] | null>(null);
   const busyRef = useRef(false);
   const [sharing, setSharing] = useState(false);
+  const [confirmReset, setConfirmReset] = useState(false);
   const [shareLabel, setShareLabel] = useState("");
   const autoTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -205,6 +206,7 @@ function DashboardApp({
       // never leak screen shares across refreshes
       streamRef.current?.getTracks().forEach((t) => t.stop());
       if (autoTimerRef.current) clearInterval(autoTimerRef.current);
+      if (statusTimer.current) clearTimeout(statusTimer.current);
     };
   }, []);
 
@@ -268,8 +270,11 @@ function DashboardApp({
   async function clearHistory() {
     try {
       await fetch(`${apiBase}/api/history`, { method: "DELETE" });
-    } catch {}
-    setMessages([]);
+      setMessages([]);
+      setTransientStatus("chat history reset");
+    } catch {
+      setTransientStatus("could not reset chat history");
+    }
   }
 
   async function loadHistory(base: string) {
@@ -626,6 +631,10 @@ function DashboardApp({
           <span className="font-[family-name:var(--font-mono,ui-monospace)] text-[10px] uppercase tracking-[0.35em] text-emerald-300/80">
             sage_
           </span>
+          <div
+            className="flex items-center gap-2"
+            style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
+          >
           {sharing && (
             <div className="flex items-center gap-2 rounded-full border border-emerald-300/40 bg-emerald-400/15 px-3 py-1">
               <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-300" />
@@ -641,6 +650,18 @@ function DashboardApp({
               </button>
             </div>
           )}
+            <button
+              onClick={() => setConfirmReset(true)}
+              title="Reset chat history"
+              className="flex h-7 w-7 items-center justify-center rounded-lg text-zinc-500 transition-colors hover:bg-white/[0.06] hover:text-zinc-200"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 6h18" />
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+                <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+              </svg>
+            </button>
+          </div>
         </div>
 
         <div ref={logRef} className="min-h-0 flex-1 overflow-y-auto p-5">
@@ -660,8 +681,8 @@ function DashboardApp({
                 <div
                   className={
                     m.role === "user"
-                      ? "max-w-[80%] rounded-2xl rounded-br-sm border border-emerald-300/25 bg-emerald-400/15 px-4 py-2.5 text-sm text-emerald-50 backdrop-blur-md"
-                      : "max-w-[85%] rounded-2xl rounded-bl-sm border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-zinc-200 backdrop-blur-sm"
+                      ? "max-w-[78%] rounded-2xl rounded-br-sm border border-emerald-300/25 bg-emerald-400/15 px-4 py-2.5 text-[13.5px] leading-relaxed text-emerald-50 backdrop-blur-md"
+                      : "max-w-[85%] rounded-2xl rounded-bl-sm border border-white/[0.08] bg-[#0b0e14]/70 px-4 py-3 text-[13.5px] leading-relaxed text-zinc-200 backdrop-blur-sm"
                   }
                 >
                   <p className="whitespace-pre-wrap">{m.content}</p>
@@ -670,7 +691,7 @@ function DashboardApp({
                       {m.documents.map((d, j) => (
                         <span
                           key={j}
-                          className="rounded bg-white/10 px-1.5 py-0.5 font-[family-name:var(--font-mono,ui-monospace)] text-[10px] text-zinc-300/80"
+                          className="rounded border border-white/10 bg-white/[0.06] px-1.5 py-0.5 font-[family-name:var(--font-mono,ui-monospace)] text-[10px] text-zinc-300/80"
                         >
                           {d.document}
                           {d.page ? `:p${d.page}` : ""}
@@ -688,7 +709,7 @@ function DashboardApp({
                   <span className="h-2 w-2 animate-bounce rounded-full bg-emerald-300/90 [animation-delay:150ms]" />
                   <span className="h-2 w-2 animate-bounce rounded-full bg-emerald-300/90 [animation-delay:300ms]" />
                 </div>
-                <span className="font-[family-name:var(--font-mono,ui-monospace)] text-xs text-zinc-500">
+                <span className="font-[family-name:var(--font-mono,ui-monospace)] text-[10px] uppercase tracking-[0.18em] text-zinc-500">
                   sage is thinking
                 </span>
               </div>
@@ -733,6 +754,47 @@ function DashboardApp({
         </motion.div>
       </main>
 
+      <AnimatePresence>
+        {confirmReset && (
+          <motion.div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.18 }}
+            onClick={() => setConfirmReset(false)}
+          >
+            <motion.div
+              className="w-[22rem] rounded-2xl border border-white/10 bg-[#12161f] p-5 shadow-[0_20px_80px_rgba(0,0,0,0.6)]"
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.97, y: 4 }}
+              transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 className="text-sm font-semibold text-zinc-100">Reset chat history?</h3>
+              <p className="mt-2 text-xs leading-relaxed text-zinc-400">
+                This wipes the conversation on SAGE and this device. Your macro tracker
+                and schedule stay untouched.
+              </p>
+              <div className="mt-4 flex justify-end gap-2">
+                <button
+                  onClick={() => setConfirmReset(false)}
+                  className="rounded-lg border border-white/10 px-3 py-1.5 text-xs text-zinc-300 transition-colors hover:bg-white/[0.06]"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={clearHistory}
+                  className="rounded-lg bg-red-500/90 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-red-500"
+                >
+                  Reset
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
