@@ -66,7 +66,9 @@ The repo-root `.env` supplies `NEBIUS_API_KEY`, `NEBIUS_BASE_URL`, and
   wrapped in `<tool_results>` / `<document_context>` delimiters; the
   system prompt declares all such content untrusted. The agent loop is
   hard-capped at 5 rounds.
-- API: CORS is a strict allowlist (`localhost:3000`, `127.0.0.1:3000`),
-  all 5xx responses are generic, and stack traces / secrets stay in the
-  server log only. Chat payloads are length-limited via Pydantic.
+- API: CORS is an open wildcard policy (`allow_origins=["*"]` with permissive
+  methods/headers; CORSMiddleware is registered last so it runs outermost and
+  preflights get headers before the LLM guard), all 5xx responses are generic,
+  and stack traces / secrets stay in the server log only. Chat payloads are
+  length-limited via Pydantic.
 - Verify with `venv/bin/python scripts/security_checks.py`.
