@@ -86,13 +86,7 @@ class MacroTracker:
         )
 
     def add_intake(
-        self,
-        label: str,
-        calories: float,
-        protein: float,
-        dedupe: bool = True,
-        carbs: Optional[float] = None,
-        fats: Optional[float] = None,
+        self, label: str, calories: float, protein: float, dedupe: bool = True
     ) -> Dict[str, Any]:
         if dedupe:
             normalized = " ".join(str(label).lower().split())
@@ -115,10 +109,6 @@ class MacroTracker:
             "protein": protein,
             "time": datetime.now().isoformat(timespec="seconds"),
         }
-        if carbs is not None:
-            entry["carbs_g"] = float(carbs)
-        if fats is not None:
-            entry["fats_g"] = float(fats)
         self.entries.append(entry)
         self._save()
         return entry

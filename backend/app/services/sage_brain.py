@@ -23,7 +23,6 @@ from skills.web_search import search_web  # noqa: E402
 
 from app.core.config import settings  # noqa: E402
 from app.services.memory_manager import MemoryManager  # noqa: E402
-from app.services.screen_copilot import ScreenCopilot  # noqa: E402
 
 MAX_TOOL_ROUNDS = 5
 ACTIVE_WINDOW_MESSAGES = 12
@@ -273,8 +272,6 @@ class SageBrain:
             schedule_provider=lambda: self.schedule.state(24),
         )
         self.memory = MemoryManager(self.state_dir)
-        self.screen_copilot = ScreenCopilot(self.schedule)
-        self.screen_copilot.on_note_saved = self.reader.invalidate
         self.model = settings.model_id
         self.client: Optional[AsyncOpenAI] = None
         if settings.nebius_api_key:
@@ -282,9 +279,8 @@ class SageBrain:
                 base_url=settings.nebius_base_url,
                 api_key=settings.nebius_api_key,
                 timeout=120.0,
-                max_retries=1,
-            )
-        self.screen_copilot.client = self.client
+            max_retries=1,
+        )
 
     def build_state(self, documents: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
         return {

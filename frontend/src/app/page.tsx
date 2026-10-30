@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
+import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { AuroraHero } from "@/components/ui/hero";
 
@@ -32,7 +32,6 @@ type ChatMsg = {
   role: "user" | "assistant" | "system";
   content: string;
   documents?: DocumentRef[];
-  imageUrl?: string;
 };
 
 const EMPTY_STATE: AgentState = {
@@ -168,158 +167,13 @@ function StatePanels({ state }: { state: AgentState }) {
   );
 }
 
-function AttachButton({ onPick, attached }: { onPick: (file: File) => void; attached: boolean }) {
-  return (
-    <label
-      title="Attach an image"
-      className={`flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-2xl border transition-colors ${
-        attached
-          ? "border-emerald-300/60 bg-emerald-400/15 text-emerald-200"
-          : "border-white/10 bg-white/[0.05] text-zinc-400 hover:border-white/20 hover:text-zinc-200"
-      }`}
-    >
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-        <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48" />
-      </svg>
-      <input
-        type="file"
-        accept="image/*"
-        className="hidden"
-        onChange={(e) => {
-          const file = e.target.files?.[0];
-          if (file) onPick(file);
-          e.target.value = "";
-        }}
-      />
-    </label>
-  );
-}
-
-function ImageThumb({ image, onRemove }: { image: File; onRemove: () => void }) {
-  const [url, setUrl] = useState<string | null>(null);
-  useEffect(() => {
-    const objectUrl = URL.createObjectURL(image);
-    setUrl(objectUrl);
-    return () => URL.revokeObjectURL(objectUrl);
-  }, [image]);
-  return (
-    <div className="relative mb-2 w-fit">
-      {url ? (
-        <img
-          src={url}
-          alt="attachment preview"
-          className="h-16 w-16 rounded-xl border border-white/15 object-cover"
-        />
-      ) : (
-        <div className="h-16 w-16 animate-pulse rounded-xl border border-white/15 bg-white/10" />
-      )}
-      <button
-        onClick={onRemove}
-        title="Remove attachment"
-        className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full border border-white/25 bg-black/75 text-[10px] leading-none text-zinc-300 hover:border-white/50 hover:text-white"
-      >
-        ✕
-      </button>
-    </div>
-  );
-}
-
-const _n = (v: unknown) => (typeof v === "number" ? Math.round(v) : 0);
-
-// tiny inline markdown: **bold** and *italic* spans only
-function _md(text: string): ReactNode[] {
-  const parts: ReactNode[] = [];
-  const re = /\*\*(.+?)\*\*|\*(.+?)\*/g;
-  let last = 0;
-  let key = 0;
-  let match: RegExpExecArray | null;
-  while ((match = re.exec(text))) {
-    if (match.index > last) parts.push(text.slice(last, match.index));
-    if (match[1] !== undefined) {
-      parts.push(
-        <strong key={key++} className="font-semibold text-white">
-          {match[1]}
-        </strong>
-      );
-    } else {
-      parts.push(<em key={key++} className="italic">{match[2]}</em>);
-    }
-    last = re.lastIndex;
-  }
-  if (last < text.length) parts.push(text.slice(last));
-  return parts;
-}
-
-// block renderer for assistant bubbles: bullets, blank lines, bold/italic
-function MarkdownBlock({ content }: { content: string }) {
-  return (
-    <div className="flex flex-col gap-1.5">
-      {content.split("\n").map((line, k) => {
-        if (!line.trim()) return <div key={k} className="h-1.5" />;
-        const bullet = line.startsWith("- ") || line.startsWith("• ");
-        const body = bullet ? line.slice(2) : line;
-        return (
-          <div key={k} className={bullet ? "flex gap-2" : undefined}>
-            {bullet && <span className="shrink-0 text-emerald-300/80">•</span>}
-            <span>{_md(body)}</span>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-function formatPerceptionReply(data: any): string {
-  if (data?.type === "FOOD_MEAL") {
-    // server now builds the rich markdown breakdown — prefer it verbatim
-    if (typeof data.summary === "string" && data.summary.trim()) return data.summary;
-    const macros = data.macros ?? {};
-    const items: any[] = Array.isArray(macros.items) ? macros.items : [];
-    const totals = macros.today_totals ?? {};
-    const targets = macros.targets ?? {};
-    const lines = [data.summary || "Meal logged from your photo."];
-    if (items.length) {
-      lines.push(
-        "",
-        ...items.map(
-          (i) =>
-            `• ${i.name ?? "food item"} — ${_n(i.calories)} kcal · ${_n(i.protein_g)}g protein · ${_n(i.carbs_g)}g carbs · ${_n(i.fats_g)}g fats`
-        )
-      );
-    }
-    if (totals.calories != null) {
-      lines.push(
-        "",
-        `Daily Total: ${_n(totals.calories)} / ${_n(targets.calories)} kcal · ${_n(totals.protein)} / ${_n(targets.protein)} g protein`
-      );
-    }
-    return lines.join("\n");
-  }
-  if (data?.type === "ACADEMIC_ASSIGNMENT") {
-    // rich markdown breakdown is built server-side (reply mirrors summary)
-    if (typeof data.reply === "string" && data.reply.trim()) return data.reply;
-    if (typeof data.summary === "string" && data.summary.trim()) return data.summary;
-    const title = data.title ? ` "${data.title}"` : "";
-    return `Saved assignment${title}${data.due_date ? ` — due ${data.due_date}` : ""} and indexed it into your notes.`;
-  }
-  if (data?.status === "error") {
-    return `I couldn't analyze that image (${data.reason ?? "perception unavailable"}). Try again in a moment.`;
-  }
-  if (data?.status === "ignored") {
-    return "That capture didn't contain anything I could act on.";
-  }
-  return data?.summary ?? data?.log_line ?? "Perception completed.";
-}
-
 function DashboardApp({
   initialPrompt,
-  initialImage,
   messages,
   setMessages,
   onState,
 }: {
   initialPrompt?: string | null;
-  initialImage?: File | null;
   messages: ChatMsg[];
   setMessages: Dispatch<SetStateAction<ChatMsg[]>>;
   onState: (s: AgentState) => void;
@@ -327,8 +181,14 @@ function DashboardApp({
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [online, setOnline] = useState<boolean | null>(null);
-  const [pendingImage, setPendingImage] = useState<File | null>(null);
   const logRef = useRef<HTMLDivElement>(null);
+  const [statusToast, setStatusToast] = useState("");
+  const statusTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  function setTransientStatus(msg: string) {
+    setStatusToast(msg);
+    if (statusTimer.current) clearTimeout(statusTimer.current);
+    statusTimer.current = setTimeout(() => setStatusToast(""), 5000);
+  }
   const [apiBase, setApiBase] = useState(API);
 
   useEffect(() => {
@@ -434,165 +294,6 @@ function DashboardApp({
     } catch {}
   }
 
-  // --- Screen Perception (Study Copilot) ---
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const prevSigRef = useRef<number[] | null>(null);
-  const busyRef = useRef(false);
-  const [streaming, setStreaming] = useState(false);
-  const [streamLabel, setStreamLabel] = useState("");
-  const [autoDetect, setAutoDetect] = useState(false);
-  const [perceiving, setPerceiving] = useState(false);
-  const [perceptionStatus, setPerceptionStatus] = useState("");
-
-  const statusTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  function setTransientStatus(msg: string) {
-    setPerceptionStatus(msg);
-    if (statusTimer.current) clearTimeout(statusTimer.current);
-    statusTimer.current = setTimeout(() => setPerceptionStatus(""), 5000);
-  }
-
-  function endStudyStream() {
-    if (autoTimerRef.current) {
-      clearInterval(autoTimerRef.current);
-      autoTimerRef.current = null;
-    }
-    streamRef.current?.getTracks().forEach((t) => t.stop());
-    streamRef.current = null;
-    prevSigRef.current = null;
-    setStreaming(false);
-    setAutoDetect(false);
-    setStreamLabel("");
-    setTransientStatus("stream ended");
-  }
-
-  useEffect(() => {
-    return () => {
-      // never leak screen shares across refreshes
-      streamRef.current?.getTracks().forEach((t) => t.stop());
-      if (autoTimerRef.current) clearInterval(autoTimerRef.current);
-    };
-  }, []);
-
-  async function selectStudyWindow() {
-    try {
-      const stream = await navigator.mediaDevices.getDisplayMedia({
-        video: { displaySurface: "browser" },
-        audio: false,
-      });
-      streamRef.current?.getTracks().forEach((t) => t.stop());
-      streamRef.current = stream;
-      prevSigRef.current = null;
-      const video = videoRef.current;
-      if (video) {
-        video.srcObject = stream;
-        await video.play().catch(() => {});
-      }
-      const track = stream.getVideoTracks()[0];
-      setStreamLabel(track?.label || "selected window");
-      setStreaming(true);
-      setTransientStatus("study stream active");
-      track?.addEventListener("ended", endStudyStream);
-    } catch {
-      setTransientStatus("screen share cancelled");
-    }
-  }
-
-  function frameSignature(): number[] | null {
-    const video = videoRef.current;
-    if (!video || !video.videoWidth) return null;
-    const grid = document.createElement("canvas");
-    grid.width = 32;
-    grid.height = 18;
-    const gctx = grid.getContext("2d", { willReadFrequently: true });
-    if (!gctx) return null;
-    gctx.drawImage(video, 0, 0, 32, 18);
-    const px = gctx.getImageData(0, 0, 32, 18).data;
-    const sig: number[] = [];
-    for (let i = 0; i < px.length; i += 4) {
-      sig.push((px[i] + 2 * px[i + 1] + px[i + 2]) / 4);
-    }
-    return sig;
-  }
-
-  function captureFrame(force = false): string | null {
-    const sig = frameSignature();
-    if (!sig) return null;
-    const prev = prevSigRef.current;
-    prevSigRef.current = sig;
-    if (!force && prev && prev.length === sig.length) {
-      let changed = 0;
-      for (let i = 0; i < sig.length; i++) {
-        if (Math.abs(sig[i] - prev[i]) > 12) changed++;
-      }
-      // <5% of sampled blocks changed: static screen, skip upload entirely
-      if (changed / sig.length < 0.05) return null;
-    }
-    const video = videoRef.current;
-    if (!video || !video.videoWidth) return null;
-    const canvas = document.createElement("canvas");
-    canvas.width = 1280;
-    canvas.height = Math.round((video.videoHeight / video.videoWidth) * 1280) || 720;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return null;
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    const dataUrl = canvas.toDataURL("image/jpeg", 0.6);
-    return dataUrl.split(",")[1] ?? null;
-  }
-
-  async function perceive(mode: "auto_scan" | "manual_snap") {
-    if (!streamRef.current || busyRef.current) return;
-    const frame = captureFrame(mode === "manual_snap");
-    if (!frame) {
-      setTransientStatus("frame unchanged — local skip, nothing sent");
-      return;
-    }
-    busyRef.current = true;
-    setPerceiving(true);
-    try {
-      const r = await fetch(`${apiBase}/api/perceive`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image_base64: frame, trigger_mode: mode }),
-      });
-      if (!r.ok) {
-        setTransientStatus(`perception error ${r.status}`);
-        return;
-      }
-      const data = await r.json();
-      if (data.state) onState(data.state);
-      if (data.status === "ignored") {
-        setTransientStatus(`frame ignored (${data.reason})`);
-      } else if (data.status === "assignment_scheduled") {
-        setMessages((m) => [...m, { role: "assistant", content: data.log_line }]);
-        setTransientStatus(`assignment scheduled — ${data.log_line ?? ""}`);
-      } else if (data.status === "note_saved") {
-        setMessages((m) => [...m, { role: "assistant", content: data.log_line }]);
-        setTransientStatus(`note saved — ${data.log_line ?? ""}`);
-      }
-    } catch {
-      setTransientStatus("perception call failed");
-    } finally {
-      busyRef.current = false;
-      setPerceiving(false);
-    }
-  }
-
-  const autoTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  useEffect(() => {
-    if (autoDetect && streaming) {
-      void perceive("auto_scan");
-      const id = setInterval(() => void perceive("auto_scan"), 30000);
-      autoTimerRef.current = id;
-      return () => clearInterval(id);
-    }
-    if (autoTimerRef.current) {
-      clearInterval(autoTimerRef.current);
-      autoTimerRef.current = null;
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoDetect, streaming]);
-
   useEffect(() => {
     logRef.current?.scrollTo({ top: logRef.current.scrollHeight });
   }, [messages, sending]);
@@ -606,97 +307,14 @@ function DashboardApp({
     }
   }
 
-  const objectUrlsRef = useRef<string[]>([]);
-  useEffect(() => {
-    const urls = objectUrlsRef.current;
-    return () => urls.forEach((u) => URL.revokeObjectURL(u));
-  }, []);
-
-  async function sendPerceive(text: string, image: File) {
-    if (sending) return;
-    // the landing handler may have already appended this exact user turn
-    // (seeded bubble) — never duplicate it
-    const lastMsg = messages[messages.length - 1];
-    const seeded = !!(
-      lastMsg &&
-      lastMsg.role === "user" &&
-      lastMsg.content === (text || "Analyze this image")
-    );
-    if (!seeded) {
-      const previewUrl = URL.createObjectURL(image);
-      objectUrlsRef.current.push(previewUrl);
-      // immediate user bubble with the inline attachment thumbnail
-      setMessages((m) => [
-        ...m,
-        { role: "user", content: text || "Analyze this image", imageUrl: previewUrl },
-      ]);
-    }
-    setSending(true);
-    const form = new FormData();
-    form.append("image", image);
-    if (text) form.append("prompt", text);
-    const post = async (base: string) => {
-      const r = await fetch(`${base}/api/perceive`, { method: "POST", body: form });
-      if (!r.ok) {
-        console.error(`SAGE perceive POST ${base}/api/perceive -> HTTP ${r.status}`);
-        throw { kind: "http", status: r.status };
-      }
-      return r.json();
-    };
-    try {
-      let data;
-      try {
-        data = await post(apiBase);
-      } catch (err: any) {
-        if (err?.kind === "http") throw err;
-        // one stack unreachable — retry on the alternate base transparently
-        const alt = apiBase === API ? API_FALLBACK : API;
-        data = await post(alt);
-        setApiBase(alt);
-      }
-      setMessages((m) => [...m, { role: "assistant", content: formatPerceptionReply(data) }]);
-      // fresh state from the response keeps the sidebar widgets in sync
-      // instantly — no page reload, no extra fetch
-      if (data.state) onState(data.state);
-      else void refreshState();
-      setOnline(true);
-    } catch (err: any) {
-      console.error("SAGE perception failed:", err);
-      const offline = err?.kind !== "http";
-      setMessages((m) => [
-        ...m,
-        {
-          role: "assistant",
-          content: offline
-            ? `Cannot reach the SAGE backend on ${apiBase} or ${API_FALLBACK}. Is uvicorn running?`
-            : `Perception failed (HTTP ${err?.status ?? "?"}). Try a clearer image in a moment.`,
-        },
-      ]);
-      if (offline) {
-        setOnline(false);
-        void refreshState();
-      }
-    } finally {
-      setSending(false);
-    }
-  }
-
   async function send(textArg?: string) {
     const text = (textArg ?? input).trim();
     if (sending) return;
-    if (!text && !pendingImage) return;
-    if (!textArg) setInput("");
-    if (pendingImage) {
-      const image = pendingImage;
-      setPendingImage(null);
-      await sendPerceive(text, image);
-      return;
-    }
     // the landing handler may have already appended this exact user turn
     // (seeded bubble) — never duplicate it and never double-count it in
     // the API history payload
     const lastMsg = messages[messages.length - 1];
-    const seeded = !!(lastMsg && lastMsg.role === "user" && lastMsg.content === text && !lastMsg.imageUrl);
+    const seeded = !!(lastMsg && lastMsg.role === "user" && lastMsg.content === text);
     const history: { role: "user" | "assistant" | "system"; content: string }[] = [
       ...messages.map(({ role, content }) => ({ role, content })),
       ...(seeded ? [] : [{ role: "user" as const, content: text }]),
@@ -788,19 +406,11 @@ function DashboardApp({
   const sentInitialRef = useRef(false);
   useEffect(() => {
     if (sentInitialRef.current) return;
-    if (initialImage) {
-      sentInitialRef.current = true;
-      void sendPerceive(initialPrompt?.trim() ?? "", initialImage);
-    } else if (initialPrompt) {
-      sentInitialRef.current = true;
-      void send(initialPrompt.trim());
-    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
     <div id="docs" className="relative h-full w-full text-zinc-100">
-      <video ref={videoRef} className="hidden" autoPlay muted playsInline />
       <div className="fixed right-5 top-5 z-30 flex items-center gap-2 rounded-full border border-white/10 bg-black/35 px-3 py-1.5 font-[family-name:var(--font-mono,ui-monospace)] text-[10px] uppercase tracking-[0.22em] text-zinc-400 backdrop-blur-md">
         <span
           className={`h-1.5 w-1.5 rounded-full ${
@@ -814,9 +424,9 @@ function DashboardApp({
         {online === null ? "connecting" : online ? "sage online" : "sage offline"}
       </div>
 
-      {perceptionStatus && (
+      {statusToast && (
         <div className="pointer-events-none fixed bottom-4 left-4 z-50 rounded-xl border border-white/10 bg-black/55 px-3 py-2 font-[family-name:var(--font-mono,ui-monospace)] text-xs text-zinc-200 backdrop-blur-md">
-          perception: {perceptionStatus}
+          {statusToast}
         </div>
       )}
 
@@ -851,18 +461,7 @@ function DashboardApp({
                       : "max-w-[85%] rounded-2xl rounded-bl-sm border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-zinc-200 backdrop-blur-sm"
                   }
                 >
-                  {m.imageUrl && (
-                    <img
-                      src={m.imageUrl}
-                      alt="attached"
-                      className="mb-2 max-h-48 w-auto max-w-full rounded-xl border border-white/20 object-cover"
-                    />
-                  )}
-                  {m.role === "assistant" ? (
-                    <MarkdownBlock content={m.content} />
-                  ) : (
-                    <p className="whitespace-pre-wrap">{m.content}</p>
-                  )}
+                  <p className="whitespace-pre-wrap">{m.content}</p>
                   {m.role === "assistant" && m.documents && m.documents.length > 0 && (
                     <div className="mt-2 flex flex-wrap gap-1.5 border-t border-white/10 pt-2">
                       {m.documents.map((d, j) => (
@@ -899,13 +498,7 @@ function DashboardApp({
           transition={{ layout: { duration: 0.5, ease: [0.22, 1, 0.36, 1] } }}
           className="shrink-0 border-t border-white/[0.07] p-4"
         >
-          {pendingImage && (
-            <div className="mx-auto max-w-2xl">
-              <ImageThumb image={pendingImage} onRemove={() => setPendingImage(null)} />
-            </div>
-          )}
           <div className="mx-auto flex max-w-2xl items-center gap-2">
-            <AttachButton onPick={setPendingImage} attached={!!pendingImage} />
             <input
               value={input}
               onChange={(e) => setInput(e.target.value)}
@@ -915,7 +508,7 @@ function DashboardApp({
             />
             <button
               onClick={() => send()}
-              disabled={sending || (!input.trim() && !pendingImage)}
+              disabled={sending || !input.trim()}
               className="rounded-xl bg-emerald-400/75 px-5 py-2.5 text-sm font-semibold text-[#08130d] backdrop-blur-md transition-colors hover:bg-emerald-300 disabled:opacity-40"
             >
               Send
@@ -935,17 +528,9 @@ export default function SAGEHome() {
   const [booted, setBooted] = useState(false);
   const [isStarted, setIsStarted] = useState(false);
   const [pendingPrompt, setPendingPrompt] = useState<string | null>(null);
-  const [pendingImage, setPendingImage] = useState<File | null>(null);
   const [draft, setDraft] = useState("");
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [agentState, setAgentState] = useState<AgentState>(EMPTY_STATE);
-  const objectUrlsRef = useRef<string[]>([]);
-
-  useEffect(() => {
-    const urls = objectUrlsRef.current;
-    return () => urls.forEach((u) => URL.revokeObjectURL(u));
-  }, []);
-
   useEffect(() => {
     const t = setTimeout(() => setBooted(true), 250);
     return () => clearTimeout(t);
@@ -965,23 +550,13 @@ export default function SAGEHome() {
     };
   }, [booted]);
 
-  function startSession(prompt: string, image: File | null = null) {
+  function startSession(prompt: string) {
     const trimmed = prompt.trim();
-    if (!trimmed && !image) return;
+    if (!trimmed) return;
     // optimistic user bubble BEFORE the transition/API call so the
     // prompt is visible the instant the dashboard expands
-    const previewUrl = image ? URL.createObjectURL(image) : undefined;
-    if (previewUrl) objectUrlsRef.current.push(previewUrl);
-    setMessages((prev) => [
-      ...prev,
-      {
-        role: "user",
-        content: trimmed || "Analyze this image",
-        ...(previewUrl ? { imageUrl: previewUrl } : {}),
-      },
-    ]);
-    setPendingPrompt(trimmed || null);
-    setPendingImage(image);
+    setMessages((prev) => [...prev, { role: "user", content: trimmed }]);
+    setPendingPrompt(trimmed);
     setDraft("");
     setIsStarted(true);
   }
@@ -1077,7 +652,6 @@ export default function SAGEHome() {
             >
               <DashboardApp
                 initialPrompt={pendingPrompt}
-                initialImage={pendingImage}
                 messages={messages}
                 setMessages={setMessages}
                 onState={setAgentState}

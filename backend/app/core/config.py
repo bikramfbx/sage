@@ -23,11 +23,6 @@ class Settings(BaseSettings):
     nebius_base_url: str = "https://api.studio.nebius.ai/v1"
     model_id: str = "nvidia/Nemotron-3-Ultra-550b-a55b"
 
-    # Vision-language model for image perception (Nebius VLM; falls back to
-    # local OCR heuristics when unreachable or unset)
-    vision_model_id: str = "openbmb/MiniCPM-V-4_5"
-    max_image_upload_mb: int = 10
-
     @field_validator("cors_origins", mode="before")
     @classmethod
     def _strip_wildcards(cls, value):
