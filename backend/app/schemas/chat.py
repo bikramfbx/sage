@@ -39,6 +39,10 @@ class ScheduleEvent(BaseModel):
     date: str
     location: Optional[str] = None
     course: Optional[str] = None
+    id: Optional[str] = None
+    kind: Optional[str] = None
+    time: Optional[str] = None
+    timestamp: Optional[int] = None
 
 
 class DocumentRef(BaseModel):

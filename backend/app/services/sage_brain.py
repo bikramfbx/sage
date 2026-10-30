@@ -1,7 +1,7 @@
 import json
 import re
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -44,13 +44,16 @@ Personality: articulate, warm, and natural — a sharp friend who happens to hav
 
 You help with academics, scheduling and timetables, nutrition and macro tracking, and finding things in the student's personal PDF library.
 
+You are an active academic assistant with full capability to create schedule items, reminders, and push notifications — never claim you cannot set reminders, timers, alarms, or notifications.
+
 Portion sanity-checks before estimating:
 Anchor estimates on reference foods and scale by count and portion, then round sensibly — 1 large egg ~70-78 kcal / 6-7 g protein; 1 cup cooked rice ~200-240 kcal / 4-5 g protein; 1 roti ~70-100 kcal / 2-3 g protein; 100 g cooked chicken breast ~165 kcal / 31 g protein; 100 g paneer ~265 kcal / 18 g protein; 1 dal serving ~150-200 kcal / 9-12 g protein; 1 medium banana ~90-105 kcal / 1 g protein; 1 sweet bun ~150-230 kcal / 4-6 g protein; 1 whey scoop ~120 kcal / 24 g protein.
 
 Tools and when to use them:
 - log_macros: ONLY when the student logs NEW food they actually ate ("I ate X", "had X for dinner", "add a meal"). If they give exact numbers, use them as-is. If the meal is vague, estimate from the portion anchors above. Always pass a short food_description. If the tool result reports duplicate: true, the meal was already recorded today — do not retry, just confirm it's tracked and give the current totals.
 - edit_macro_entry: when the student corrects or challenges an estimate ("No, 6 eggs is 36 g protein, not 85 g", "it was way less than that") — update the matching logged entry instead of re-logging or ignoring it. Match against the entries in the daily macro state below by keyword; if nothing matches, say so.
-- manage_schedule: whenever the user wants an event added, a weekly timetable imported, or asks what's coming up. Use add_event for single events and resolve relative dates like "tomorrow 5 PM" into ISO 8601 using the current time given below. Use bulk_import_timetable for pasted or one-shot timetables (formats like "CS302 Mon/Wed 10 AM in LT-5, OS Lab Tue 2 PM in Lab 2" or "Mon 09:00 CS-302 Distributed Systems @ LT-5"). Use get_schedule when asked about plans. If a call fails, adjust and retry once.
+- add_schedule_item: THE tool for reminders and quick events. Whenever the student asks to set a reminder or mentions an upcoming event ("remind me in 17 minutes about my quiz", "quiz starts in 20 minutes", "add exam on Friday"), calculate the exact event time from the current system time (given below) and call this tool with a short title, start_in_minutes for near-term reminders or date_time for absolute times, and the location if known. It appends the item to the Upcoming Schedule and arms a native notification popup. Confirm the reminder is set with the exact time (the tool returns it) and that it appears in the sidebar.
+- manage_schedule: for formal calendar events, weekly timetable imports, or schedule queries. Use add_event for single events and resolve relative dates like "tomorrow 5 PM" into ISO 8601 using the current time given below. Use bulk_import_timetable for pasted or one-shot timetables (formats like "CS302 Mon/Wed 10 AM in LT-5, OS Lab Tue 2 PM in Lab 2" or "Mon 09:00 CS-302 Distributed Systems @ LT-5"). Use get_schedule when asked about plans. If a call fails, adjust and retry once.
 - search_docs: when the user asks about their notes, PDFs, lectures, syllabus, auto-captured assignment notes, or wants to recall anything previously captured ("what was X about again?"). It searches PDFs, markdown notes, and scheduled events. If the local library returns nothing relevant, its result includes web_results automatically — use those and cite the links.
 - run_python_interpreter: for math the model must not guess — calculus, differential equations (sympy dsolve), physics formulas, numerical solving, statistics, or generating a plot (matplotlib). Write a complete script with print() for results; principles of calculus and physics are your own knowledge, but exact symbolic/numeric results must come from the interpreter.
 - web_search: grounded DuckDuckGo search for external academic facts, definitions, or recent information the notes library cannot cover. Cite returned href links inline (e.g. "[1](href)") when you use them.
@@ -193,6 +196,38 @@ TOOLS = [
                     },
                 },
                 "required": ["action"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "add_schedule_item",
+            "description": (
+                "Append a schedule item / reminder and arm its notification popup. "
+                "Use for reminders phrased relatively ('in 17 minutes', 'in an hour') "
+                "or absolute events ('exam on Friday'). The item appears instantly in "
+                "the student's Upcoming Schedule sidebar; the popup fires at the start "
+                "time for quick reminders and ~15 minutes early for longer ones."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "title": {
+                        "type": "string",
+                        "description": "Short event title, e.g. 'Quiz' or 'CS302 exam'",
+                    },
+                    "in_minutes": {
+                        "type": "number",
+                        "description": "Minutes from now for near-term reminders, e.g. 17. Preferred when the user phrased it relatively.",
+                    },
+                    "date_time": {
+                        "type": "string",
+                        "description": "ISO 8601 datetime for absolute events, e.g. 2026-10-31T09:00:00",
+                    },
+                    "location": {"type": "string", "description": "Room, link, or 'Online / Classroom'"},
+                },
+                "required": ["title"],
             },
         },
     },
@@ -461,6 +496,59 @@ class SageBrain:
                     "updated": result["updated"],
                     "today_totals": result["today_totals"],
                     "targets": result["targets"],
+                }
+
+            if name == "add_schedule_item":
+                title = str(args.get("title") or "Reminder")
+                location = str(args.get("location")) if args.get("location") else None
+                now = datetime.now()
+                when = None
+                minutes = None
+                if args.get("in_minutes") is not None:
+                    try:
+                        minutes = float(args["in_minutes"])
+                    except (TypeError, ValueError):
+                        minutes = None
+                if minutes is not None:
+                    when = now + timedelta(minutes=max(0, minutes))
+                elif args.get("date_time"):
+                    from skills.schedule_manager import parse_datetime
+
+                    try:
+                        when = parse_datetime(str(args["date_time"]))
+                    except ValueError:
+                        when = None
+                if when is None:
+                    when = now + timedelta(minutes=15)
+                    minutes = 15
+                event = self.schedule.add_event(
+                    title=title,
+                    date_time=when.isoformat(timespec="seconds"),
+                    location=location,
+                    course=None,
+                )
+                if minutes is not None:
+                    event["id"] = f"{title.strip().lower().replace(' ', '_')[:32]}_{int(minutes)}m"
+                else:
+                    event["id"] = f"{title.strip().lower().replace(' ', '_')[:48]}"
+                event["time"] = (
+                    "Today, " + when.strftime("%H:%M")
+                    if when.date() == now.date()
+                    else when.strftime("%b %d, %H:%M")
+                )
+                event["timestamp"] = int(when.timestamp())
+                event["kind"] = "reminder"
+                self.schedule._save()
+                collected["schedule_touched"] = True
+                return {
+                    "ok": True,
+                    "event": event,
+                    "when_display": event["time"],
+                    "iso": when.isoformat(timespec="seconds"),
+                    "note": (
+                        "Reminder is on the sidebar. A popup notification fires at the "
+                        "start time. Confirm the exact time in your reply."
+                    ),
                 }
 
             if name == "manage_schedule":

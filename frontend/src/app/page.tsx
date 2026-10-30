@@ -23,6 +23,7 @@ type ScheduleEvent = {
   location: string | null;
   course: string | null;
   id?: string;
+  kind?: string;
 };
 type DocumentRef = { document: string; page: number | null; snippet: string | null };
 type AgentState = {
@@ -901,7 +902,9 @@ export default function SAGEHome() {
           const start = Date.parse(ev.date);
           if (Number.isNaN(start)) continue;
           const minutes = (start - now) / 60000;
-          if (minutes < 0 || minutes > 15) continue;
+          // quick reminders fire at their start time; classes warn 15 min early
+          const window = ev.kind === "reminder" ? 1 : 15;
+          if (minutes < 0 || minutes > window) continue;
           const key = ev.id ?? `${ev.title}|${ev.date}`;
           if (notifiedRef.current.has(key)) continue;
           notifiedRef.current.add(key);
