@@ -36,6 +36,16 @@ The repo-root `.env` supplies `NEBIUS_API_KEY`, `NEBIUS_BASE_URL`, and
 - `GET /api/history` — persisted conversation turns for dashboard restore
 - `DELETE /api/history` — wipe chat history + compressed summary (macros
   and schedule state are untouched)
+- `POST /api/screen/analyze` — live Screen Copilot (Tab Analyzer):
+  `{frame_base64, question?}`. One VLM pass per captured tab frame.
+  Without a question it extracts course code / topic title / due date
+  plus a markdown study note; due dates are appended to
+  `sandbox/state/schedule.json` and notes are saved to
+  `sandbox/docs/auto_notes_screen_{timestamp}.md`, then the RAG index is
+  invalidated so the capture is instantly searchable. With a question it
+  answers about the current screen using the frame + notes-library
+  snippets, and persists both turns to chat history for cross-questioning.
+  Frames are decoded in memory only and never persisted.
 
 ## Architecture notes
 

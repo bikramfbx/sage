@@ -191,6 +191,23 @@ function DashboardApp({
   }
   const [apiBase, setApiBase] = useState(API);
 
+  // --- Live Screen Copilot (Tab Analyzer) ---
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const prevSigRef = useRef<number[] | null>(null);
+  const busyRef = useRef(false);
+  const [sharing, setSharing] = useState(false);
+  const [shareLabel, setShareLabel] = useState("");
+  const autoTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      // never leak screen shares across refreshes
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+      if (autoTimerRef.current) clearInterval(autoTimerRef.current);
+    };
+  }, []);
+
   useEffect(() => {
     let alive = true;
     let timer: ReturnType<typeof setTimeout> | null = null;
@@ -307,6 +324,161 @@ function DashboardApp({
     }
   }
 
+  function stopShare() {
+    if (autoTimerRef.current) {
+      clearInterval(autoTimerRef.current);
+      autoTimerRef.current = null;
+    }
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
+    prevSigRef.current = null;
+    setSharing(false);
+    setShareLabel("");
+    setTransientStatus("screen sharing stopped");
+  }
+
+  async function startShare() {
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: true,
+        audio: false,
+      });
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+      streamRef.current = stream;
+      prevSigRef.current = null;
+      const video = videoRef.current;
+      if (video) {
+        video.srcObject = stream;
+        await video.play().catch(() => {});
+      }
+      const track = stream.getVideoTracks()[0];
+      setShareLabel(track?.label || "selected tab");
+      setSharing(true);
+      setTransientStatus("screen copilot active");
+      track?.addEventListener("ended", stopShare);
+      // index the tab immediately, then watch for changes every 30s
+      setTimeout(() => void autoAnalyze(true), 1500);
+      autoTimerRef.current = setInterval(() => void autoAnalyze(false), 30000);
+    } catch {
+      setTransientStatus("screen share cancelled");
+    }
+  }
+
+  function frameSignature(): number[] | null {
+    const video = videoRef.current;
+    if (!video || !video.videoWidth) return null;
+    const grid = document.createElement("canvas");
+    grid.width = 32;
+    grid.height = 18;
+    const gctx = grid.getContext("2d", { willReadFrequently: true });
+    if (!gctx) return null;
+    gctx.drawImage(video, 0, 0, 32, 18);
+    const px = gctx.getImageData(0, 0, 32, 18).data;
+    const sig: number[] = [];
+    for (let i = 0; i < px.length; i += 4) {
+      sig.push((px[i] + 2 * px[i + 1] + px[i + 2]) / 4);
+    }
+    return sig;
+  }
+
+  function captureFrame(force = false): string | null {
+    const sig = frameSignature();
+    if (!sig) return null;
+    const prev = prevSigRef.current;
+    prevSigRef.current = sig;
+    if (!force && prev && prev.length === sig.length) {
+      let changed = 0;
+      for (let i = 0; i < sig.length; i++) {
+        if (Math.abs(sig[i] - prev[i]) > 12) changed++;
+      }
+      // <5% of sampled blocks changed: static tab, skip the upload
+      if (changed / sig.length < 0.05) return null;
+    }
+    const video = videoRef.current;
+    if (!video || !video.videoWidth) return null;
+    const canvas = document.createElement("canvas");
+    canvas.width = 1280;
+    canvas.height = Math.round((video.videoHeight / video.videoWidth) * 1280) || 720;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.6);
+    return dataUrl.split(",")[1] ?? null;
+  }
+
+  async function postScreen(base: string, payload: object) {
+    const r = await fetch(`${base}/api/screen/analyze`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!r.ok) {
+      console.error(`SAGE screen POST ${base}/api/screen/analyze -> HTTP ${r.status}`);
+      throw { kind: "http", status: r.status };
+    }
+    return r.json();
+  }
+
+  async function autoAnalyze(force: boolean) {
+    if (!streamRef.current || busyRef.current) return;
+    const frame = captureFrame(force);
+    if (!frame) return; // tab unchanged - nothing new to index
+    busyRef.current = true;
+    try {
+      let data;
+      try {
+        data = await postScreen(apiBase, { frame_base64: frame });
+      } catch (err: any) {
+        if (err?.kind === "http") throw err;
+        const alt = apiBase === API ? API_FALLBACK : API;
+        data = await postScreen(alt, { frame_base64: frame });
+        setApiBase(alt);
+      }
+      if (data.state) onState(data.state);
+      if (data.log_line) {
+        setMessages((m) => [...m, { role: "assistant", content: data.log_line }]);
+      }
+      setTransientStatus(data.log_line ?? "tab capture indexed");
+    } catch {
+      setTransientStatus("screen copilot call failed");
+    } finally {
+      busyRef.current = false;
+    }
+  }
+
+  async function askScreen(text: string, frame: string) {
+    setSending(true);
+    try {
+      let data;
+      try {
+        data = await postScreen(apiBase, { frame_base64: frame, question: text });
+      } catch (err: any) {
+        if (err?.kind === "http") throw err;
+        const alt = apiBase === API ? API_FALLBACK : API;
+        data = await postScreen(alt, { frame_base64: frame, question: text });
+        setApiBase(alt);
+      }
+      setMessages((m) => [...m, { role: "assistant", content: data.reply }]);
+      if (data.state) onState(data.state);
+      setOnline(true);
+    } catch (err: any) {
+      console.error("SAGE screen copilot failed:", err);
+      const offline = err?.kind !== "http";
+      setMessages((m) => [
+        ...m,
+        {
+          role: "assistant",
+          content: offline
+            ? `Cannot reach the SAGE backend on ${apiBase} or ${API_FALLBACK}. Is uvicorn running?`
+            : `Screen copilot failed (HTTP ${err?.status ?? "?"}). Try again in a moment.`,
+        },
+      ]);
+      if (offline) setOnline(false);
+    } finally {
+      setSending(false);
+    }
+  }
+
   async function send(textArg?: string) {
     const text = (textArg ?? input).trim();
     if (sending) return;
@@ -320,6 +492,14 @@ function DashboardApp({
       ...(seeded ? [] : [{ role: "user" as const, content: text }]),
     ];
     if (!seeded) setMessages((m) => [...m, { role: "user", content: text }]);
+    if (sharing) {
+      const frame = captureFrame(true);
+      if (frame) {
+        await askScreen(text, frame);
+        return;
+      }
+      // no frame available - fall through to plain text chat
+    }
     setSending(true);
 
     // context window slicing: keep the payload safely under the 64-item
@@ -401,16 +581,21 @@ function DashboardApp({
     }
   }
 
-  // landing quick-action / prompt seeding: fire the seeded prompt or
-  // image perception once the dashboard is live
+  // landing quick-action / prompt seeding: fire the seeded prompt once
+  // the dashboard is live
   const sentInitialRef = useRef(false);
   useEffect(() => {
     if (sentInitialRef.current) return;
+    if (initialPrompt) {
+      sentInitialRef.current = true;
+      void send(initialPrompt.trim());
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
     <div id="docs" className="relative h-full w-full text-zinc-100">
+      <video ref={videoRef} className="hidden" autoPlay muted playsInline />
       <div className="fixed right-5 top-5 z-30 flex items-center gap-2 rounded-full border border-white/10 bg-black/35 px-3 py-1.5 font-[family-name:var(--font-mono,ui-monospace)] text-[10px] uppercase tracking-[0.22em] text-zinc-400 backdrop-blur-md">
         <span
           className={`h-1.5 w-1.5 rounded-full ${
@@ -434,10 +619,25 @@ function DashboardApp({
         id="chat"
         className="relative z-10 flex h-full min-h-0 w-full flex-col overflow-hidden rounded-3xl border border-white/10 bg-white/[0.07] shadow-[0_10px_70px_rgba(0,0,0,0.45)] backdrop-blur-xl"
       >
-        <div className="flex h-11 shrink-0 items-center border-b border-white/[0.07] px-5">
+        <div className="flex h-11 shrink-0 items-center justify-between border-b border-white/[0.07] px-5">
           <span className="font-[family-name:var(--font-mono,ui-monospace)] text-[10px] uppercase tracking-[0.35em] text-emerald-300/80">
             sage_
           </span>
+          {sharing && (
+            <div className="flex items-center gap-2 rounded-full border border-emerald-300/40 bg-emerald-400/15 px-3 py-1">
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-300" />
+              <span className="font-[family-name:var(--font-mono,ui-monospace)] text-[10px] uppercase tracking-[0.2em] text-emerald-200">
+                sage active — watching tab
+              </span>
+              <button
+                onClick={stopShare}
+                title={`Stop Sharing${shareLabel ? `: ${shareLabel}` : ""}`}
+                className="rounded-full border border-white/15 px-1.5 py-0.5 font-[family-name:var(--font-mono,ui-monospace)] text-[9px] uppercase tracking-[0.15em] text-zinc-300 transition-colors hover:border-white/40 hover:text-white"
+              >
+                stop
+              </button>
+            </div>
+          )}
         </div>
 
         <div ref={logRef} className="min-h-0 flex-1 overflow-y-auto p-5">
@@ -499,6 +699,19 @@ function DashboardApp({
           className="shrink-0 border-t border-white/[0.07] p-4"
         >
           <div className="mx-auto flex max-w-2xl items-center gap-2">
+            {!sharing && (
+              <button
+                onClick={startShare}
+                title="Share Tab / Screen"
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.05] text-zinc-400 transition-colors hover:border-emerald-300/40 hover:text-emerald-200"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <rect width="20" height="14" x="2" y="3" rx="2" />
+                  <line x1="8" x2="16" y1="21" y2="21" />
+                  <line x1="12" x2="12" y1="17" y2="21" />
+                </svg>
+              </button>
+            )}
             <input
               value={input}
               onChange={(e) => setInput(e.target.value)}

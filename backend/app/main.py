@@ -4,7 +4,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api.routes import chat, health, history, state, summary
+from app.api.routes import chat, health, history, screen_copilot, state, summary
 from app.core.config import settings
 
 logger = logging.getLogger("sage")
@@ -28,6 +28,7 @@ app.include_router(chat.router, prefix="/api", tags=["chat"])
 app.include_router(state.router, prefix="/api", tags=["state"])
 app.include_router(history.router, prefix="/api", tags=["history"])
 app.include_router(summary.router, prefix="/api", tags=["summary"])
+app.include_router(screen_copilot.router, prefix="/api", tags=["screen copilot"])
 
 
 @app.exception_handler(Exception)

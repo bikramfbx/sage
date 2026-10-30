@@ -23,6 +23,9 @@ class Settings(BaseSettings):
     nebius_base_url: str = "https://api.studio.nebius.ai/v1"
     model_id: str = "nvidia/Nemotron-3-Ultra-550b-a55b"
 
+    # Vision-language model for live tab analysis (Nebius VLM)
+    vision_model_id: str = "openbmb/MiniCPM-V-4_5"
+
     @field_validator("cors_origins", mode="before")
     @classmethod
     def _strip_wildcards(cls, value):
