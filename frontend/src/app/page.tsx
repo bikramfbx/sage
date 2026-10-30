@@ -165,17 +165,116 @@ function StatePanels({ state }: { state: AgentState }) {
   );
 }
 
+function AttachButton({ onPick, attached }: { onPick: (file: File) => void; attached: boolean }) {
+  return (
+    <label
+      title="Attach an image"
+      className={`flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-2xl border transition-colors ${
+        attached
+          ? "border-emerald-300/60 bg-emerald-400/15 text-emerald-200"
+          : "border-white/10 bg-white/[0.05] text-zinc-400 hover:border-white/20 hover:text-zinc-200"
+      }`}
+    >
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+      </svg>
+      <input
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) onPick(file);
+          e.target.value = "";
+        }}
+      />
+    </label>
+  );
+}
+
+function ImageThumb({ image, onRemove }: { image: File; onRemove: () => void }) {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    const objectUrl = URL.createObjectURL(image);
+    setUrl(objectUrl);
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [image]);
+  return (
+    <div className="relative mb-2 w-fit">
+      {url ? (
+        <img
+          src={url}
+          alt="attachment preview"
+          className="h-16 w-16 rounded-xl border border-white/15 object-cover"
+        />
+      ) : (
+        <div className="h-16 w-16 animate-pulse rounded-xl border border-white/15 bg-white/10" />
+      )}
+      <button
+        onClick={onRemove}
+        title="Remove attachment"
+        className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full border border-white/25 bg-black/75 text-[10px] leading-none text-zinc-300 hover:border-white/50 hover:text-white"
+      >
+        ✕
+      </button>
+    </div>
+  );
+}
+
+const _n = (v: unknown) => (typeof v === "number" ? Math.round(v) : 0);
+
+function formatPerceptionReply(data: any): string {
+  if (data?.type === "FOOD_MEAL") {
+    const macros = data.macros ?? {};
+    const items: any[] = Array.isArray(macros.items) ? macros.items : [];
+    const totals = macros.today_totals ?? {};
+    const targets = macros.targets ?? {};
+    const lines = [data.summary || "Meal logged from your photo."];
+    if (items.length) {
+      lines.push(
+        "",
+        ...items.map(
+          (i) =>
+            `• ${i.name ?? "food item"} — ${_n(i.calories)} kcal · ${_n(i.protein_g)}g protein · ${_n(i.carbs_g)}g carbs · ${_n(i.fats_g)}g fats`
+        )
+      );
+    }
+    if (totals.calories != null) {
+      lines.push(
+        "",
+        `Daily Total: ${_n(totals.calories)} / ${_n(targets.calories)} kcal · ${_n(totals.protein)} / ${_n(targets.protein)} g protein`
+      );
+    }
+    return lines.join("\n");
+  }
+  if (data?.type === "ACADEMIC_ASSIGNMENT") {
+    if (data.log_line) return data.log_line;
+    const title = data.title ? ` "${data.title}"` : "";
+    return `Saved assignment${title}${data.due_date ? ` — due ${data.due_date}` : ""} and indexed it into your notes.`;
+  }
+  if (data?.status === "error") {
+    return `I couldn't analyze that image (${data.reason ?? "perception unavailable"}). Try again in a moment.`;
+  }
+  if (data?.status === "ignored") {
+    return "That capture didn't contain anything I could act on.";
+  }
+  return data?.summary ?? data?.log_line ?? "Perception completed.";
+}
+
 function DashboardApp({
   initialPrompt,
+  initialImage,
   onState,
 }: {
   initialPrompt?: string | null;
+  initialImage?: File | null;
   onState: (s: AgentState) => void;
 }) {
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [online, setOnline] = useState<boolean | null>(null);
+  const [pendingImage, setPendingImage] = useState<File | null>(null);
   const logRef = useRef<HTMLDivElement>(null);
   const [apiBase, setApiBase] = useState(API);
 
@@ -424,10 +523,79 @@ function DashboardApp({
     logRef.current?.scrollTo({ top: logRef.current.scrollHeight });
   }, [messages, sending]);
 
+  async function refreshState() {
+    try {
+      const r = await fetch(`${apiBase}/api/state`);
+      if (r.ok) onState(await r.json());
+    } catch {
+      // sidebar refresh is best-effort
+    }
+  }
+
+  async function sendPerceive(text: string, image: File) {
+    if (sending) return;
+    setMessages((m) => [...m, { role: "user", content: text || "[image attached]" }]);
+    setSending(true);
+    const form = new FormData();
+    form.append("image", image);
+    if (text) form.append("prompt", text);
+    const post = async (base: string) => {
+      const r = await fetch(`${base}/api/perceive`, { method: "POST", body: form });
+      if (!r.ok) {
+        console.error(`SAGE perceive POST ${base}/api/perceive -> HTTP ${r.status}`);
+        throw { kind: "http", status: r.status };
+      }
+      return r.json();
+    };
+    try {
+      let data;
+      try {
+        data = await post(apiBase);
+      } catch (err: any) {
+        if (err?.kind === "http") throw err;
+        // one stack unreachable — retry on the alternate base transparently
+        const alt = apiBase === API ? API_FALLBACK : API;
+        data = await post(alt);
+        setApiBase(alt);
+      }
+      setMessages((m) => [...m, { role: "assistant", content: formatPerceptionReply(data) }]);
+      // fresh state from the response keeps the sidebar widgets in sync
+      // instantly — no page reload, no extra fetch
+      if (data.state) onState(data.state);
+      else void refreshState();
+      setOnline(true);
+    } catch (err: any) {
+      console.error("SAGE perception failed:", err);
+      const offline = err?.kind !== "http";
+      setMessages((m) => [
+        ...m,
+        {
+          role: "assistant",
+          content: offline
+            ? `Cannot reach the SAGE backend on ${apiBase} or ${API_FALLBACK}. Is uvicorn running?`
+            : `Perception failed (HTTP ${err?.status ?? "?"}). Try a clearer image in a moment.`,
+        },
+      ]);
+      if (offline) {
+        setOnline(false);
+        void refreshState();
+      }
+    } finally {
+      setSending(false);
+    }
+  }
+
   async function send(textArg?: string) {
     const text = (textArg ?? input).trim();
-    if (!text || sending) return;
+    if (sending) return;
+    if (!text && !pendingImage) return;
     if (!textArg) setInput("");
+    if (pendingImage) {
+      const image = pendingImage;
+      setPendingImage(null);
+      await sendPerceive(text, image);
+      return;
+    }
     const history: { role: "user" | "assistant" | "system"; content: string }[] = [
       ...messages.map(({ role, content }) => ({ role, content })),
       { role: "user", content: text },
@@ -514,11 +682,15 @@ function DashboardApp({
     }
   }
 
-  // landing quick-action / prompt seeding: fire the seeded message once
-  // the dashboard is live
+  // landing quick-action / prompt seeding: fire the seeded prompt or
+  // image perception once the dashboard is live
   const sentInitialRef = useRef(false);
   useEffect(() => {
-    if (initialPrompt && !sentInitialRef.current) {
+    if (sentInitialRef.current) return;
+    if (initialImage) {
+      sentInitialRef.current = true;
+      void sendPerceive(initialPrompt?.trim() ?? "", initialImage);
+    } else if (initialPrompt) {
       sentInitialRef.current = true;
       void send(initialPrompt.trim());
     }
@@ -615,7 +787,13 @@ function DashboardApp({
           transition={{ layout: { duration: 0.5, ease: [0.22, 1, 0.36, 1] } }}
           className="shrink-0 border-t border-white/[0.07] p-4"
         >
-          <div className="mx-auto flex max-w-2xl gap-2">
+          {pendingImage && (
+            <div className="mx-auto max-w-2xl">
+              <ImageThumb image={pendingImage} onRemove={() => setPendingImage(null)} />
+            </div>
+          )}
+          <div className="mx-auto flex max-w-2xl items-center gap-2">
+            <AttachButton onPick={setPendingImage} attached={!!pendingImage} />
             <input
               value={input}
               onChange={(e) => setInput(e.target.value)}
@@ -645,7 +823,9 @@ export default function SAGEHome() {
   const [booted, setBooted] = useState(false);
   const [isStarted, setIsStarted] = useState(false);
   const [pendingPrompt, setPendingPrompt] = useState<string | null>(null);
+  const [pendingImage, setPendingImage] = useState<File | null>(null);
   const [draft, setDraft] = useState("");
+  const [landingImage, setLandingImage] = useState<File | null>(null);
   const [agentState, setAgentState] = useState<AgentState>(EMPTY_STATE);
 
   useEffect(() => {
@@ -667,10 +847,13 @@ export default function SAGEHome() {
     };
   }, [booted]);
 
-  function startSession(prompt: string) {
+  function startSession(prompt: string, image: File | null = null) {
     const trimmed = prompt.trim();
-    if (!trimmed) return;
-    setPendingPrompt(trimmed);
+    if (!trimmed && !image) return;
+    setPendingPrompt(trimmed || null);
+    setPendingImage(image);
+    setDraft("");
+    setLandingImage(null);
     setIsStarted(true);
   }
 
@@ -710,35 +893,33 @@ export default function SAGEHome() {
                   <motion.div
                     layoutId="sage-input"
                     transition={{ layout: { duration: 0.5, ease: [0.22, 1, 0.36, 1] } }}
-                    className="mt-10 flex w-[min(100%,36rem)] items-center gap-2 rounded-3xl border border-white/15 bg-black/30 p-3 shadow-[0_14px_60px_rgba(0,0,0,0.5)] backdrop-blur-xl"
+                    className="mt-10 flex w-[min(100%,36rem)] flex-col rounded-3xl border border-white/15 bg-black/30 p-3 shadow-[0_14px_60px_rgba(0,0,0,0.5)] backdrop-blur-xl"
                     initial={{ opacity: 0, y: 14 }}
                     animate={{ opacity: 1, y: 0 }}
                   >
-                    <button
-                      title="Snap or attach (coming soon)"
-                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.05] text-zinc-400 transition-colors hover:border-white/20 hover:text-zinc-200"
-                    >
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48" />
-                      </svg>
-                    </button>
-                    <input
-                      value={draft}
-                      onChange={(e) => setDraft(e.target.value)}
-                      onKeyDown={(e) => e.key === "Enter" && startSession(draft)}
-                      placeholder="Ask SAGE..."
-                      className="h-10 flex-1 bg-transparent text-sm text-zinc-100 outline-none placeholder:text-zinc-500"
-                    />
-                    <button
-                      onClick={() => startSession(draft)}
-                      disabled={!draft.trim()}
-                      title="Send"
-                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-emerald-400/90 text-[#08130d] transition-all hover:bg-emerald-300 hover:scale-105 disabled:opacity-30"
-                    >
-                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M12 19V5M5 12l7-7 7 7" />
-                      </svg>
-                    </button>
+                    {landingImage && (
+                      <ImageThumb image={landingImage} onRemove={() => setLandingImage(null)} />
+                    )}
+                    <div className="flex items-center gap-2">
+                      <AttachButton onPick={setLandingImage} attached={!!landingImage} />
+                      <input
+                        value={draft}
+                        onChange={(e) => setDraft(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && startSession(draft, landingImage)}
+                        placeholder={landingImage ? "Add a note about this image..." : "Ask SAGE..."}
+                        className="h-10 flex-1 bg-transparent text-sm text-zinc-100 outline-none placeholder:text-zinc-500"
+                      />
+                      <button
+                        onClick={() => startSession(draft, landingImage)}
+                        disabled={!draft.trim() && !landingImage}
+                        title="Send"
+                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-emerald-400/90 text-[#08130d] transition-all hover:bg-emerald-300 hover:scale-105 disabled:opacity-30"
+                      >
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M12 19V5M5 12l7-7 7 7" />
+                        </svg>
+                      </button>
+                    </div>
                   </motion.div>
 
                   <div className="mt-7 flex flex-wrap items-center justify-center gap-3">
@@ -769,7 +950,7 @@ export default function SAGEHome() {
               animate={{ opacity: 1, y: 0, scale: 1 }}
               transition={{ type: "spring", stiffness: 80, damping: 18 }}
             >
-              <DashboardApp initialPrompt={pendingPrompt} onState={setAgentState} />
+              <DashboardApp initialPrompt={pendingPrompt} initialImage={pendingImage} onState={setAgentState} />
             </motion.div>
           )}
         </div>
