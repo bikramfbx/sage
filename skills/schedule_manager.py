@@ -158,6 +158,15 @@ class ScheduleManager:
                 return e
         return None
 
+    def remove_event(self, event_id: str) -> Optional[Dict[str, Any]]:
+        """Delete one event by id. Returns the removed event, or None."""
+        event = next((e for e in self.events if e.get("id") == event_id), None)
+        if event is None:
+            return None
+        self.events = [e for e in self.events if e.get("id") != event_id]
+        self._save()
+        return event
+
     def _parse_segment(self, segment: str) -> Optional[Dict[str, Any]]:
         """Parse one timetable segment into day indices, time, title, code, location.
 

@@ -128,7 +128,15 @@ function formatEventDate(iso: string) {
   });
 }
 
-function StatePanels({ state, onDeleteWidget }: { state: AgentState; onDeleteWidget: (id: string) => void }) {
+function StatePanels({
+  state,
+  onDeleteWidget,
+  onDeleteSchedule,
+}: {
+  state: AgentState;
+  onDeleteWidget: (id: string) => void;
+  onDeleteSchedule?: (id: string) => void;
+}) {
   const macros = state.macros;
   return (
     <aside className="flex h-full w-[21rem] flex-col gap-5 overflow-y-auto overflow-x-hidden pb-1">
@@ -187,12 +195,12 @@ function StatePanels({ state, onDeleteWidget }: { state: AgentState; onDeleteWid
               {state.schedule.map((ev, i) => (
                 <div
                   key={i}
-                  className="rounded-2xl border border-white/10 bg-black/30 p-3 transition-colors hover:border-white/20"
+                  className="group relative rounded-2xl border border-white/10 bg-black/30 p-3 transition-colors hover:border-white/20"
                 >
                   <div className="flex items-start justify-between gap-2">
                     <p className="text-sm font-medium text-zinc-100">{ev.title}</p>
                     {ev.course && (
-                      <span className="shrink-0 rounded bg-white/10 px-1.5 py-0.5 font-[family-name:var(--font-mono,ui-monospace)] text-[10px] text-emerald-300/90">
+                      <span className="shrink-0 rounded bg-white/10 px-1.5 py-0.5 font-[family-name:var(--font-mono,ui-monospace)] text-[10px] text-emerald-300/90 transition-opacity group-hover:opacity-0">
                         {ev.course}
                       </span>
                     )}
@@ -202,6 +210,16 @@ function StatePanels({ state, onDeleteWidget }: { state: AgentState; onDeleteWid
                   </p>
                   {ev.location && (
                     <p className="mt-0.5 text-xs text-zinc-500">{ev.location}</p>
+                  )}
+                  {ev.id && onDeleteSchedule && (
+                    <button
+                      type="button"
+                      title="Delete event"
+                      onClick={() => ev.id && onDeleteSchedule(ev.id)}
+                      className="absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-lg text-[11px] text-zinc-600 opacity-0 transition-all hover:bg-white/[0.06] hover:text-red-400 group-hover:opacity-100"
+                    >
+                      ✕
+                    </button>
                   )}
                 </div>
               ))}
@@ -950,6 +968,32 @@ export default function SAGEHome() {
     } catch {}
   }
 
+  async function handleDeleteSchedule(id: string) {
+    const del = (base: string) =>
+      fetch(`${base}/api/schedule/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+        headers: TZ_HEADERS,
+      });
+    let ok = false;
+    try {
+      ok = (await del(API)).ok;
+    } catch {
+      ok = false;
+    }
+    if (!ok) {
+      try {
+        ok = (await del(API_FALLBACK)).ok;
+      } catch {
+        return;
+      }
+    }
+    if (!ok) return;
+    try {
+      const r = await fetch(`${API}/api/state`, { headers: TZ_HEADERS });
+      if (r.ok) setAgentState(await r.json());
+    } catch {}
+  }
+
   // native push notifications: ask once on first interaction, then watch
   // the synced schedule for events starting within 15 minutes
   const notifiedRef = useRef<Set<string>>(new Set());
@@ -1145,7 +1189,11 @@ export default function SAGEHome() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.08, ease: [0.22, 1, 0.36, 1] }}
           >
-            <StatePanels state={agentState} onDeleteWidget={handleDeleteWidget} />
+            <StatePanels
+              state={agentState}
+              onDeleteWidget={handleDeleteWidget}
+              onDeleteSchedule={handleDeleteSchedule}
+            />
           </motion.div>
         )}
       </div>
