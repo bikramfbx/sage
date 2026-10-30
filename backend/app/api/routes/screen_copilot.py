@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, HTTPException, Request
+from openai import BadRequestError
 
 from app.schemas.screen import ScreenAnalyzeOutcome, ScreenAnalyzeRequest
 from app.services.sage_brain import sage_brain
@@ -200,6 +201,11 @@ async def screen_analyze(request: Request, body: ScreenAnalyzeRequest):
         )
     except HTTPException:
         raise
+    except BadRequestError as exc:
+        # the vision model rejected the frame (bad/foreign MIME, degenerate
+        # image) — tell the client instead of a bare 500
+        logger.warning("Screen copilot frame rejected: %s", str(exc)[:200])
+        raise HTTPException(status_code=422, detail="Frame unreadable by the vision model")
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=f"vision unavailable: {exc}")
     except Exception:
@@ -275,9 +281,10 @@ async def _analyze(
 
     when = f", due {due_label}" if due_label else ""
     dup = " (already on your schedule)" if event and event.get("duplicate") else ""
+    nodue = "" if due_label else " — no due date found on this screen"
     log_line = (
         f"Screen Copilot: indexed this tab{f' ({course})' if course else ''}"
-        f"{when}{dup} — saved to {note_path.name} and searchable in chat"
+        f"{when}{dup}{nodue} — saved to {note_path.name} and searchable in chat"
     )
     summary = note_md.strip() or raw_text.strip()[:400] or "Screen capture indexed."
     _remember(None, log_line)

@@ -41,6 +41,20 @@ function judgeAuthHeaders(): Record<string, string> {
   return headers;
 }
 
+// human-readable reason for a failed screen-copilot call, so the student
+// always knows WHY nothing changed (rate limit, auth, unreadable frame…)
+function copilotErrorMessage(err: any): string {
+  if (err?.kind === "http") {
+    const detail = typeof err.detail === "string" ? err.detail.slice(0, 140) : "";
+    if (err.status === 429) return detail || "copilot rate limited — try again in a minute";
+    if (err.status === 401) return "copilot needs the judge token or a Nebius API key";
+    if (err.status === 422) return detail || "copilot could not read this frame";
+    if (err.status === 503) return detail || "vision model unavailable";
+    return `screen copilot call failed (HTTP ${err.status})${detail ? `: ${detail}` : ""}`;
+  }
+  return "screen copilot call failed — cannot reach the SAGE backend";
+}
+
 type MacroEntry = { label: string; calories: number; protein: number; time: string };
 type MacrosState = {
   date: string;
@@ -483,8 +497,9 @@ function DashboardApp({
       body: JSON.stringify(payload),
     });
     if (!r.ok) {
-      console.error(`SAGE screen POST ${base}/api/screen/analyze -> HTTP ${r.status}`);
-      throw { kind: "http", status: r.status };
+      const detail = await r.text().catch(() => "");
+      console.error(`SAGE screen POST ${base}/api/screen/analyze -> HTTP ${r.status}`, detail.slice(0, 200));
+      throw { kind: "http", status: r.status, detail };
     }
     return r.json();
   }
@@ -509,8 +524,8 @@ function DashboardApp({
         setMessages((m) => [...m, { role: "assistant", content: data.log_line }]);
       }
       setTransientStatus(data.log_line ?? "tab capture indexed");
-    } catch {
-      setTransientStatus("screen copilot call failed");
+    } catch (err: any) {
+      setTransientStatus(copilotErrorMessage(err));
     } finally {
       busyRef.current = false;
     }
@@ -541,9 +556,7 @@ function DashboardApp({
           role: "assistant",
           content: offline
             ? `Cannot reach the SAGE backend on ${apiBase} or ${API_FALLBACK}. Is uvicorn running?`
-            : `Screen copilot failed (HTTP ${err?.status ?? "?"}). ${
-                err?.status === 401 ? "A judge token or Nebius API key is required." : "Try again in a moment."
-              }`,
+            : copilotErrorMessage(err),
         },
       ]);
       if (offline) setOnline(false);
