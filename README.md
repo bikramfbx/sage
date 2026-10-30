@@ -2,6 +2,9 @@
 
 SAGE is an always-on, privacy-first personal AI companion for a university student. It runs a tool-calling agent on NVIDIA Nemotron (Nebius serverless inference) that talks naturally, tracks nutrition and macros, manages schedules and reminders, searches a private PDF notes library with RAG, watches the screen with a live vision copilot, and renders custom tracking widgets on the dashboard.
 
+> [!TIP]
+> **Live demo**: [sage-alpha-bice.vercel.app](https://sage-alpha-bice.vercel.app/?demo_token=JUDGE_DEMO_2026) — the `?demo_token=JUDGE_DEMO_2026` query parameter auto-authenticates judge access in the browser.
+
 - **Frontend**: Next.js 16 (App Router) dashboard — deployed on Vercel
 - **Backend**: FastAPI bridge with a local skills layer — deployed on Render
 - **Inference**: Nebius serverless — `Nemotron-3-Ultra` for chat, `MiniCPM-V-4.5` for vision
