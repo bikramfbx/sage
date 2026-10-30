@@ -16,6 +16,7 @@ import json
 import re
 from datetime import datetime
 from typing import Any, Dict, Optional
+from zoneinfo import ZoneInfo
 
 from app.core.config import settings
 
@@ -169,12 +170,12 @@ class TabAnalyzer:
     def vision_available(self) -> bool:
         return bool(settings.nebius_api_key)
 
-    async def analyze_frame(self, frame_b64: str) -> Dict[str, Any]:
+    async def analyze_frame(self, frame_b64: str, tzinfo: Optional[ZoneInfo] = None) -> Dict[str, Any]:
         """One VLM pass over the captured frame in analyze mode. Returns
         course_code, topic_title, due_date, note_markdown, raw_text —
         all redacted for persistence. Ask-mode prompting lives in the
         route (it needs RAG context injected first)."""
-        now = datetime.now()
+        now = datetime.now(tzinfo) if tzinfo else datetime.now()
         prompt = ANALYZE_PROMPT.format(
             date=now.strftime("%B %d, %Y"),
             weekday=now.strftime("%A"),

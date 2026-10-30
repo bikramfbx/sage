@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import re
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, HTTPException
@@ -164,6 +165,13 @@ def _remember(prompt_text: str, assistant_text: str) -> None:
 async def screen_analyze(request: ScreenAnalyzeRequest):
     """Live Screen Copilot: analyze one captured tab frame, or answer a
     student question about the current screen (enriched with RAG)."""
+    raw_tz = (request.headers.get("X-User-Timezone") or "").strip()[:64]
+    tzinfo = None
+    if raw_tz:
+        try:
+            tzinfo = ZoneInfo(raw_tz)
+        except (ZoneInfoNotFoundError, ValueError):
+            tzinfo = None
     if not tab_analyzer.vision_available():
         raise HTTPException(status_code=503, detail="vision unavailable")
     try:
@@ -179,7 +187,7 @@ async def screen_analyze(request: ScreenAnalyzeRequest):
             ) or "(no local notes matched)"
             answer = await _ask(request.frame_base64, request.question, rag_block)
             return answer
-        return await _analyze(request.frame_base64)
+        return await _analyze(request.frame_base64, tzinfo)
     except HTTPException:
         raise
     except RuntimeError as exc:
@@ -205,8 +213,8 @@ async def _ask(frame_b64: str, question: str, rag_block: str) -> ScreenAnalyzeOu
     )
 
 
-async def _analyze(frame_b64: str) -> ScreenAnalyzeOutcome:
-    result = await tab_analyzer.analyze_frame(frame_b64)
+async def _analyze(frame_b64: str, tzinfo=None) -> ScreenAnalyzeOutcome:
+    result = await tab_analyzer.analyze_frame(frame_b64, tzinfo)
     course = result.get("course_code")
     topic = result.get("topic_title")
     raw_text = result.get("raw_text") or ""
@@ -229,7 +237,7 @@ async def _analyze(frame_b64: str) -> ScreenAnalyzeOutcome:
         except ValueError:
             logger.warning("Screen due date could not be scheduled: %s", due_date)
 
-    now = datetime.now()
+    now = datetime.now(tzinfo) if tzinfo else datetime.now()
     stamp = now.strftime("%Y%m%d_%H%M%S")
     lines = [
         f"# Screen capture — {topic or 'live tab'} — {now.strftime('%Y-%m-%d %H:%M')}",

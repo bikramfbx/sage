@@ -2,6 +2,7 @@ import json
 import re
 import sys
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -52,7 +53,10 @@ Anchor estimates on reference foods and scale by count and portion, then round s
 Tools and when to use them:
 - log_macros: ONLY when the student logs NEW food they actually ate ("I ate X", "had X for dinner", "add a meal"). If they give exact numbers, use them as-is. If the meal is vague, estimate from the portion anchors above. Always pass a short food_description. If the tool result reports duplicate: true, the meal was already recorded today — do not retry, just confirm it's tracked and give the current totals.
 - edit_macro_entry: when the student corrects or challenges an estimate ("No, 6 eggs is 36 g protein, not 85 g", "it was way less than that") — update the matching logged entry instead of re-logging or ignoring it. Match against the entries in the daily macro state below by keyword; if nothing matches, say so.
-- add_schedule_item: THE tool for reminders and quick events. Whenever the student asks to set a reminder or mentions an upcoming event ("remind me in 17 minutes about my quiz", "quiz starts in 20 minutes", "add exam on Friday"), calculate the exact event time from the current system time (given below) and call this tool with a short title, start_in_minutes for near-term reminders or date_time for absolute times, and the location if known. It appends the item to the Upcoming Schedule and arms a native notification popup. Confirm the reminder is set with the exact time (the tool returns it) and that it appears in the sidebar.
+- add_schedule_item: THE tool for reminders and quick events. Whenever the student asks to set a reminder or mentions an upcoming event ("remind me in 17 minutes about my quiz", "quiz starts in 20 minutes", "add exam on Friday"), calculate the exact event time from the current system time (given below, in the student's timezone) and call this tool with a short title, start_in_minutes for near-term reminders or date_time for absolute times, and the location if known. It appends the item to the Upcoming Schedule and arms a native notification popup. Confirm the reminder is set with the exact time (the tool returns it) and that it appears in the sidebar.
+- Reminder titles come ONLY from the current message. If the student names a topic ("remind me about CS302 lab"), title it exactly ("CS302 Lab"). If no topic is given ("set an alarm for 2 minutes", "remind me in 5 mins"), use "Reminder" — or "Timer" for alarm phrasing. NEVER reuse a topic from earlier conversation history.
+- For relative phrasing ("in 17 minutes", "in 2 minutes") ALWAYS pass in_minutes — never a date_time string. For absolute events pass date_time in the student's LOCAL time exactly as the local clock in the context below reads — never UTC, never with a timezone suffix you invented.
+- Always honor a NEW reminder request by calling the tool, even if a similar reminder exists earlier in the conversation — add_schedule_item updates the existing item in place and returns the fresh time. Never answer a reminder request with only the current time.
 - manage_schedule: for formal calendar events, weekly timetable imports, or schedule queries. Use add_event for single events and resolve relative dates like "tomorrow 5 PM" into ISO 8601 using the current time given below. Use bulk_import_timetable for pasted or one-shot timetables (formats like "CS302 Mon/Wed 10 AM in LT-5, OS Lab Tue 2 PM in Lab 2" or "Mon 09:00 CS-302 Distributed Systems @ LT-5"). Use get_schedule when asked about plans. If a call fails, adjust and retry once.
 - search_docs: when the user asks about their notes, PDFs, lectures, syllabus, auto-captured assignment notes, or wants to recall anything previously captured ("what was X about again?"). It searches PDFs, markdown notes, and scheduled events. If the local library returns nothing relevant, its result includes web_results automatically — use those and cite the links.
 - run_python_interpreter: for math the model must not guess — calculus, differential equations (sympy dsolve), physics formulas, numerical solving, statistics, or generating a plot (matplotlib). Write a complete script with print() for results; principles of calculus and physics are your own knowledge, but exact symbolic/numeric results must come from the interpreter.
@@ -412,8 +416,129 @@ class SageBrain:
             "widgets": widgets_manager.read(),
         }
 
-    def _system_prompt(self, memory_block: str = "") -> str:
-        now = datetime.now()
+    _REL_MIN = re.compile(r"\b(?:in|for|after)\s+(\d+(?:\.\d+)?)\s*(minutes?|mins?|m)\b", re.IGNORECASE)
+    _REL_HR = re.compile(r"\b(?:in|for|after)\s+(\d+(?:\.\d+)?)\s*(hours?|hrs?|hr)\b", re.IGNORECASE)
+    _REL_SEC = re.compile(r"\b(?:in|for|after)\s+(\d+)\s*seconds?\b", re.IGNORECASE)
+    _ALARM_HINT = re.compile(r"\b(alarm|timer)\b", re.IGNORECASE)
+    _REMIND_HINT = re.compile(r"\bremind(?:er|s)?\b|\bset (?:a|an|the)?\s*(alarm|timer|reminder)", re.IGNORECASE)
+    _TOPIC_ABOUT = re.compile(
+        r"\b(?:about|for|to)\s+(?P<topic>[A-Za-z0-9 .\-/#+]{3,60}?)"
+        r"(?=\s+in\s+\d|\s+at\s+\d|\s+by\s|\s+on\s|\s+before\s|\s+after\s|,|\.|!|\?|$)",
+        re.IGNORECASE,
+    )
+    _TOPIC_HAVE = re.compile(
+        r"\b(?:i|we)\s+have\s+(?:a|an|the)?\s*(?P<topic>[A-Za-z0-9 .\-/#+]{2,40}?)"
+        r"(?=\s+in\s+\d|\s+at\s+\d|\s+on\s|,|\.|!|\?|$)",
+        re.IGNORECASE,
+    )
+
+    @staticmethod
+    def _clean_topic(raw: str) -> Optional[str]:
+        topic = re.sub(
+            r"\b(my|our|the|a|an|please|upcoming|next)\b", " ", raw, flags=re.IGNORECASE
+        )
+        topic = " ".join(topic.split()).strip(" .,-")
+        if not topic:
+            return None
+        words = topic.split()[:4]
+        cased = " ".join(
+            w if any(c.isupper() for c in w) or any(c.isdigit() for c in w) else w.capitalize()
+            for w in words
+        )
+        return cased[:60]
+
+    def _parse_reminder_request(self, text: str) -> Optional[Dict[str, Any]]:
+        """Deterministic parser for relative reminder/alarm requests.
+
+        Returns tool args when the CURRENT message clearly asks for a
+        relative reminder; absolute phrasing stays with the LLM tool.
+        Topic isolation is guaranteed: the title comes only from this
+        message, never from conversation history.
+        """
+        if not text:
+            return None
+        minutes = None
+        match = self._REL_MIN.search(text)
+        if match:
+            minutes = float(match.group(1))
+        elif (match := self._REL_HR.search(text)):
+            minutes = float(match.group(1)) * 60
+        elif (match := self._REL_SEC.search(text)):
+            minutes = float(match.group(1)) / 60
+        if minutes is None:
+            return None
+        if not (self._REMIND_HINT.search(text) or self._ALARM_HINT.search(text)):
+            return None
+
+        topic = None
+        topic_match = self._TOPIC_ABOUT.search(text) or self._TOPIC_HAVE.search(text)
+        if topic_match and not re.match(r"^\d", topic_match.group("topic").strip()):
+            # "for 2 minutes" is a time fragment, not a topic
+            topic = self._clean_topic(topic_match.group("topic"))
+        if topic:
+            title = topic
+        elif self._ALARM_HINT.search(text):
+            title = "Timer"
+        else:
+            title = "Reminder"
+        return {"title": title, "in_minutes": minutes}
+
+    def _add_schedule_item_impl(
+        self, args: Dict[str, Any], collected: Dict[str, Any], tzinfo: Optional[ZoneInfo]
+    ) -> Dict[str, Any]:
+        title = str(args.get("title") or "Reminder")
+        location = str(args.get("location")) if args.get("location") else None
+        now = datetime.now(tzinfo) if tzinfo else datetime.now()
+        when = None
+        minutes = None
+        if args.get("in_minutes") is not None:
+            try:
+                minutes = float(args["in_minutes"])
+            except (TypeError, ValueError):
+                minutes = None
+        if minutes is not None:
+            when = now + timedelta(minutes=max(0, minutes))
+        elif args.get("date_time"):
+            from skills.schedule_manager import parse_datetime
+
+            try:
+                when = parse_datetime(str(args["date_time"]))
+            except ValueError:
+                when = None
+        if when is None:
+            when = now + timedelta(minutes=15)
+            minutes = 15
+        event = self.schedule.add_event(
+            title=title,
+            date_time=when.isoformat(timespec="seconds"),
+            location=location,
+            course=None,
+        )
+        if minutes is not None:
+            event["id"] = f"{title.strip().lower().replace(' ', '_')[:32]}_{int(minutes)}m"
+        else:
+            event["id"] = f"{title.strip().lower().replace(' ', '_')[:48]}"
+        event["time"] = (
+            "Today, " + when.strftime("%H:%M")
+            if when.date() == now.date()
+            else when.strftime("%b %d, %H:%M")
+        )
+        event["timestamp"] = int(when.timestamp())
+        event["kind"] = "reminder"
+        self.schedule._save()
+        collected["schedule_touched"] = True
+        return {"event": event, "when_display": event["time"], "iso": when.isoformat(timespec="seconds")}
+
+    def _resolve_tz(self, user_timezone: Optional[str]) -> ZoneInfo:
+        if user_timezone:
+            try:
+                return ZoneInfo(str(user_timezone).strip()[:64])
+            except (ZoneInfoNotFoundError, ValueError):
+                pass
+        return ZoneInfo("UTC")
+
+    def _system_prompt(self, memory_block: str = "", tzinfo: Optional[ZoneInfo] = None) -> str:
+        now = datetime.now(tzinfo) if tzinfo else datetime.now()
         macro_state = self.tracker.state()
         totals = macro_state["totals"]
         entries = macro_state["entries"]
@@ -452,7 +577,11 @@ class SageBrain:
         )
 
     async def _execute_tool(
-        self, name: str, args: Dict[str, Any], collected: Dict[str, Any]
+        self,
+        name: str,
+        args: Dict[str, Any],
+        collected: Dict[str, Any],
+        tzinfo: Optional[ZoneInfo] = None,
     ) -> Dict[str, Any]:
         try:
             if name == "log_macros":
@@ -499,52 +628,12 @@ class SageBrain:
                 }
 
             if name == "add_schedule_item":
-                title = str(args.get("title") or "Reminder")
-                location = str(args.get("location")) if args.get("location") else None
-                now = datetime.now()
-                when = None
-                minutes = None
-                if args.get("in_minutes") is not None:
-                    try:
-                        minutes = float(args["in_minutes"])
-                    except (TypeError, ValueError):
-                        minutes = None
-                if minutes is not None:
-                    when = now + timedelta(minutes=max(0, minutes))
-                elif args.get("date_time"):
-                    from skills.schedule_manager import parse_datetime
-
-                    try:
-                        when = parse_datetime(str(args["date_time"]))
-                    except ValueError:
-                        when = None
-                if when is None:
-                    when = now + timedelta(minutes=15)
-                    minutes = 15
-                event = self.schedule.add_event(
-                    title=title,
-                    date_time=when.isoformat(timespec="seconds"),
-                    location=location,
-                    course=None,
-                )
-                if minutes is not None:
-                    event["id"] = f"{title.strip().lower().replace(' ', '_')[:32]}_{int(minutes)}m"
-                else:
-                    event["id"] = f"{title.strip().lower().replace(' ', '_')[:48]}"
-                event["time"] = (
-                    "Today, " + when.strftime("%H:%M")
-                    if when.date() == now.date()
-                    else when.strftime("%b %d, %H:%M")
-                )
-                event["timestamp"] = int(when.timestamp())
-                event["kind"] = "reminder"
-                self.schedule._save()
-                collected["schedule_touched"] = True
+                result = self._add_schedule_item_impl(args, collected, tzinfo)
                 return {
                     "ok": True,
-                    "event": event,
-                    "when_display": event["time"],
-                    "iso": when.isoformat(timespec="seconds"),
+                    "event": result["event"],
+                    "when_display": result["when_display"],
+                    "iso": result["iso"],
                     "note": (
                         "Reminder is on the sidebar. A popup notification fires at the "
                         "start time. Confirm the exact time in your reply."
@@ -684,7 +773,10 @@ class SageBrain:
         return content
 
     async def _run_agent(
-        self, thread: List[Dict[str, Any]], collected: Dict[str, Any]
+        self,
+        thread: List[Dict[str, Any]],
+        collected: Dict[str, Any],
+        tzinfo: Optional[ZoneInfo] = None,
     ) -> str:
         empty_content_rounds = 0
         tool_counts: Dict[str, int] = {}
@@ -746,7 +838,7 @@ class SageBrain:
                     args = json.loads(tc.function.arguments or "{}")
                 except json.JSONDecodeError:
                     args = {}
-                result = await self._execute_tool(tc.function.name, args, collected)
+                result = await self._execute_tool(tc.function.name, args, collected, tzinfo)
                 payload = json.dumps(result)[:5000]
                 if tc.function.name == "search_docs":
                     payload = f"<document_context>{payload}</document_context>"
@@ -855,12 +947,19 @@ class SageBrain:
         self,
         messages: List[Dict[str, str]],
         conversation_id: Optional[str] = None,
+        user_timezone: Optional[str] = None,
     ) -> Dict[str, Any]:
+        tzinfo = self._resolve_tz(user_timezone)
         thread_messages = [
             {"role": m["role"], "content": m["content"]}
             for m in messages
             if m.get("content")
         ]
+        reminder_args = (
+            self._parse_reminder_request(thread_messages[-1]["content"])
+            if thread_messages
+            else None
+        )
 
         self.memory.merge_incoming(thread_messages)
         await self.memory.maybe_compress(self.client, self.model)
@@ -876,12 +975,25 @@ class SageBrain:
                     window = thread_messages
                 collected: Dict[str, Any] = {}
                 thread = [
-                    {"role": "system", "content": self._system_prompt(summary)}
+                    {"role": "system", "content": self._system_prompt(summary, tzinfo)}
                 ]
+                if reminder_args is not None:
+                    pre = self._add_schedule_item_impl(reminder_args, collected, tzinfo)
+                    thread.append({
+                        "role": "system",
+                        "content": (
+                            "[SYSTEM ACTION] A schedule item was ALREADY created for the "
+                            f"student's latest request: title=\"{pre['event']['title']}\", "
+                            f"when=\"{pre['when_display']}\", iso=\"{pre['iso']}\". It is on "
+                            "the Upcoming Schedule sidebar and its notification popup is "
+                            "armed. Confirm this briefly with the exact time — do NOT call "
+                            "add_schedule_item again for this item."
+                        ),
+                    })
                 thread.extend(
                     {"role": m["role"], "content": m["content"]} for m in window
                 )
-                reply = await self._run_agent(thread, collected)
+                reply = await self._run_agent(thread, collected, tzinfo)
                 result = {"reply": reply, "state": self.build_state(collected.get("documents"))}
             except Exception as exc:
                 result = self._fallback(thread_messages[-1]["content"])

@@ -10,6 +10,12 @@ import { resolveWidget, type WidgetData } from "@/components/widgets/WidgetRegis
 const API = "http://127.0.0.1:8001";
 const API_FALLBACK = "http://localhost:8001";
 
+// client timezone for every backend request — reminder math and
+// "what time is it" answers must match the browser clock
+const USER_TIMEZONE =
+  (typeof Intl !== "undefined" && Intl.DateTimeFormat().resolvedOptions().timeZone) || "UTC";
+const TZ_HEADERS = { "X-User-Timezone": USER_TIMEZONE };
+
 type MacroEntry = { label: string; calories: number; protein: number; time: string };
 type MacrosState = {
   date: string;
@@ -230,7 +236,7 @@ function DashboardApp({
 
     const probe = async (base: string): Promise<boolean> => {
       try {
-        const r = await fetch(`${base}/api/state`);
+        const r = await fetch(`${base}/api/state`, { headers: TZ_HEADERS });
         if (!r.ok) {
           console.warn(`SAGE backend probe ${base} -> HTTP ${r.status}`);
           return false;
@@ -283,7 +289,7 @@ function DashboardApp({
 
   async function clearHistory() {
     try {
-      await fetch(`${apiBase}/api/history`, { method: "DELETE" });
+      await fetch(`${apiBase}/api/history`, { method: "DELETE", headers: TZ_HEADERS });
       setMessages([]);
       setTransientStatus("chat history reset");
     } catch {
@@ -293,7 +299,7 @@ function DashboardApp({
 
   async function loadHistory(base: string) {
     try {
-      const r = await fetch(`${base}/api/history`);
+      const r = await fetch(`${base}/api/history`, { headers: TZ_HEADERS });
       if (!r.ok) return;
       const h = await r.json();
       if (Array.isArray(h.messages)) {
@@ -336,7 +342,7 @@ function DashboardApp({
 
   async function refreshState() {
     try {
-      const r = await fetch(`${apiBase}/api/state`);
+      const r = await fetch(`${apiBase}/api/state`, { headers: TZ_HEADERS });
       if (r.ok) onState(await r.json());
     } catch {
       // sidebar refresh is best-effort
@@ -428,7 +434,7 @@ function DashboardApp({
   async function postScreen(base: string, payload: object) {
     const r = await fetch(`${base}/api/screen/analyze`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...TZ_HEADERS },
       body: JSON.stringify(payload),
     });
     if (!r.ok) {
@@ -536,7 +542,7 @@ function DashboardApp({
       try {
         const r = await fetch(`${base}/api/chat`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", ...TZ_HEADERS },
           body: JSON.stringify({ messages: history.slice(-limit) }),
         });
         if (!r.ok) {
@@ -831,7 +837,7 @@ export default function SAGEHome() {
   useEffect(() => {
     if (!booted) return;
     let alive = true;
-    fetch(`${API}/api/state`)
+    fetch(`${API}/api/state`, { headers: TZ_HEADERS })
       .then((r) => (r.ok ? r.json() : null))
       .then((s) => {
         if (alive && s) setAgentState(s);
@@ -844,7 +850,10 @@ export default function SAGEHome() {
 
   async function handleDeleteWidget(id: string) {
     const del = (base: string) =>
-      fetch(`${base}/api/widgets/${encodeURIComponent(id)}`, { method: "DELETE" });
+      fetch(`${base}/api/widgets/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+        headers: TZ_HEADERS,
+      });
     let ok = false;
     try {
       ok = (await del(API)).ok;
@@ -860,7 +869,7 @@ export default function SAGEHome() {
     }
     if (!ok) return;
     try {
-      const r = await fetch(`${API}/api/state`);
+      const r = await fetch(`${API}/api/state`, { headers: TZ_HEADERS });
       if (r.ok) setAgentState(await r.json());
     } catch {}
   }

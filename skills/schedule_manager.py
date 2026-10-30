@@ -294,10 +294,26 @@ class ScheduleManager:
         }
 
     def upcoming(self, limit: int = 8) -> List[Dict[str, Any]]:
-        now = datetime.now().isoformat(timespec="seconds")
-        upcoming = [e for e in self.events if e.get("date", "") >= now]
-        upcoming.sort(key=lambda e: e.get("date", ""))
-        return upcoming[:limit]
+        now = datetime.now()
+
+        def _local_naive(value: str) -> Optional[datetime]:
+            try:
+                parsed = datetime.fromisoformat(str(value))
+            except (ValueError, TypeError):
+                return None
+            # offset-aware events (client-local times) normalize to the
+            # server clock so string formats never break comparisons
+            if parsed.tzinfo:
+                parsed = parsed.astimezone().replace(tzinfo=None)
+            return parsed
+
+        pool: List[tuple] = []
+        for e in self.events:
+            parsed = _local_naive(e.get("date", ""))
+            if parsed is None or parsed >= now:
+                pool.append((parsed or datetime.max, e))
+        pool.sort(key=lambda pair: pair[0])
+        return [e for _, e in pool[:limit]]
 
     def state(self, limit: int = 12) -> List[Dict[str, Any]]:
         """Sidebar view: next occurrences with recurring titles collapsed
