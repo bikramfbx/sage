@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type Dispatch, type SetStateAction } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { AuroraHero } from "@/components/ui/hero";
+import { resolveWidget, type WidgetData } from "@/components/widgets/WidgetRegistry";
 
 // backend binds 127.0.0.1; localhost can stall on IPv6 (::1) in some
 // environments before the browser falls back, so probe IPv4 first
@@ -21,12 +22,14 @@ type ScheduleEvent = {
   date: string;
   location: string | null;
   course: string | null;
+  id?: string;
 };
 type DocumentRef = { document: string; page: number | null; snippet: string | null };
 type AgentState = {
   macros: MacrosState;
   schedule: ScheduleEvent[];
   documents: DocumentRef[];
+  widgets?: WidgetData[];
 };
 type ChatMsg = {
   role: "user" | "assistant" | "system";
@@ -43,6 +46,7 @@ const EMPTY_STATE: AgentState = {
   },
   schedule: [],
   documents: [],
+  widgets: [],
 };
 
 function ProgressBar({
@@ -92,7 +96,7 @@ function formatEventDate(iso: string) {
   });
 }
 
-function StatePanels({ state }: { state: AgentState }) {
+function StatePanels({ state, onDeleteWidget }: { state: AgentState; onDeleteWidget: (id: string) => void }) {
   const macros = state.macros;
   return (
     <aside className="flex h-full w-[21rem] flex-col gap-5 overflow-y-auto overflow-x-hidden pb-1">
@@ -130,6 +134,15 @@ function StatePanels({ state }: { state: AgentState }) {
             </ul>
           )}
         </section>
+
+        {(state.widgets ?? []).length > 0 && (
+          <div className="flex flex-col gap-3">
+            {(state.widgets ?? []).map((w) => {
+              const Card = resolveWidget(w.type);
+              return <Card key={w.id} widget={w} onDelete={onDeleteWidget} />;
+            })}
+          </div>
+        )}
 
         <section className="rounded-3xl border border-white/10 bg-white/[0.07] p-4 backdrop-blur-xl">
           <h2 className="mb-3 font-[family-name:var(--font-mono,ui-monospace)] text-[10px] uppercase tracking-[0.28em] text-zinc-400">
@@ -828,6 +841,89 @@ export default function SAGEHome() {
     };
   }, [booted]);
 
+  async function handleDeleteWidget(id: string) {
+    const del = (base: string) =>
+      fetch(`${base}/api/widgets/${encodeURIComponent(id)}`, { method: "DELETE" });
+    let ok = false;
+    try {
+      ok = (await del(API)).ok;
+    } catch {
+      ok = false;
+    }
+    if (!ok) {
+      try {
+        ok = (await del(API_FALLBACK)).ok;
+      } catch {
+        return;
+      }
+    }
+    if (!ok) return;
+    try {
+      const r = await fetch(`${API}/api/state`);
+      if (r.ok) setAgentState(await r.json());
+    } catch {}
+  }
+
+  // native push notifications: ask once on first interaction, then watch
+  // the synced schedule for events starting within 15 minutes
+  const notifiedRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    try {
+      notifiedRef.current = new Set(
+        JSON.parse(sessionStorage.getItem("notified_events") ?? "[]")
+      );
+    } catch {
+      notifiedRef.current = new Set();
+    }
+    const ask = () => {
+      try {
+        if ("Notification" in window && Notification.permission === "default") {
+          void Notification.requestPermission();
+        }
+      } catch {}
+      window.removeEventListener("pointerdown", ask);
+      window.removeEventListener("keydown", ask);
+    };
+    window.addEventListener("pointerdown", ask);
+    window.addEventListener("keydown", ask);
+    return () => {
+      window.removeEventListener("pointerdown", ask);
+      window.removeEventListener("keydown", ask);
+    };
+  }, []);
+
+  useEffect(() => {
+    const check = () => {
+      try {
+        if (!("Notification" in window) || Notification.permission !== "granted") return;
+        const now = Date.now();
+        for (const ev of agentState.schedule ?? []) {
+          const start = Date.parse(ev.date);
+          if (Number.isNaN(start)) continue;
+          const minutes = (start - now) / 60000;
+          if (minutes < 0 || minutes > 15) continue;
+          const key = ev.id ?? `${ev.title}|${ev.date}`;
+          if (notifiedRef.current.has(key)) continue;
+          notifiedRef.current.add(key);
+          try {
+            sessionStorage.setItem(
+              "notified_events",
+              JSON.stringify([...notifiedRef.current])
+            );
+          } catch {}
+          const when = ev.date.slice(11, 16);
+          new Notification(ev.title, {
+            body: `Starts at ${when} — ${ev.location || "Upcoming"}`,
+            icon: "/favicon.ico",
+          });
+        }
+      } catch {}
+    };
+    check();
+    const id = setInterval(check, 30000);
+    return () => clearInterval(id);
+  }, [agentState]);
+
   function startSession(prompt: string) {
     const trimmed = prompt.trim();
     if (!trimmed) return;
@@ -955,7 +1051,7 @@ export default function SAGEHome() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.08, ease: [0.22, 1, 0.36, 1] }}
           >
-            <StatePanels state={agentState} />
+            <StatePanels state={agentState} onDeleteWidget={handleDeleteWidget} />
           </motion.div>
         )}
       </div>

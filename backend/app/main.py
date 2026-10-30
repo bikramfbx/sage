@@ -6,7 +6,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api.routes import chat, health, history, screen_copilot, state, summary
+from app.api.routes import chat, health, history, screen_copilot, state, summary, widgets
 from app.core.config import settings
 
 logger = logging.getLogger("sage")
@@ -31,6 +31,7 @@ app.include_router(state.router, prefix="/api", tags=["state"])
 app.include_router(history.router, prefix="/api", tags=["history"])
 app.include_router(summary.router, prefix="/api", tags=["summary"])
 app.include_router(screen_copilot.router, prefix="/api", tags=["screen copilot"])
+app.include_router(widgets.router, prefix="/api", tags=["widgets"])
 
 # Lightweight per-IP sliding-window limiter for the LLM-backed endpoints:
 # keeps runaway clients (or loops) from burning API budget. In-memory only.
@@ -62,6 +63,7 @@ async def rate_limit_middleware(request: Request, call_next):
         bucket.append(now)
     return await call_next(request)
 app.include_router(screen_copilot.router, prefix="/api", tags=["screen copilot"])
+app.include_router(widgets.router, prefix="/api", tags=["widgets"])
 
 
 @app.exception_handler(Exception)

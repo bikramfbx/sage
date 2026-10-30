@@ -51,6 +51,7 @@ class AgentState(BaseModel):
     macros: MacrosState
     schedule: List[ScheduleEvent]
     documents: List[DocumentRef]
+    widgets: List[dict] = Field(default_factory=list)
 
 
 class ChatRequest(BaseModel):

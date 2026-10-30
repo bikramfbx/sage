@@ -23,6 +23,7 @@ from skills.web_search import search_web  # noqa: E402
 
 from app.core.config import settings  # noqa: E402
 from app.services.memory_manager import MemoryManager  # noqa: E402
+from app.services import widgets_manager  # noqa: E402
 
 MAX_TOOL_ROUNDS = 3
 ACTIVE_WINDOW_MESSAGES = 12
@@ -53,6 +54,11 @@ Tools and when to use them:
 - search_docs: when the user asks about their notes, PDFs, lectures, syllabus, auto-captured assignment notes, or wants to recall anything previously captured ("what was X about again?"). It searches PDFs, markdown notes, and scheduled events. If the local library returns nothing relevant, its result includes web_results automatically — use those and cite the links.
 - run_python_interpreter: for math the model must not guess — calculus, differential equations (sympy dsolve), physics formulas, numerical solving, statistics, or generating a plot (matplotlib). Write a complete script with print() for results; principles of calculus and physics are your own knowledge, but exact symbolic/numeric results must come from the interpreter.
 - web_search: grounded DuckDuckGo search for external academic facts, definitions, or recent information the notes library cannot cover. Cite returned href links inline (e.g. "[1](href)") when you use them.
+
+Custom sidebar widgets (update_user_widget):
+- Whenever the student asks to track, compare, or log an arbitrary metric (test scores, lifts week vs week, reading/study progress, GPA, habits, budgets), call update_user_widget.
+- Pick the best schema: 'list' for collections of label/value pairs (e.g. test scores), 'comparison' for current vs previous with a computed delta and optional subtext, 'progress' for numeric current-vs-target with a unit, 'stat' for a single headline value with an optional subtitle.
+- Extract numbers and labels exactly as stated; compute the delta yourself when obvious ("85kg this week vs 80kg last week" -> delta "+5 kg (+6.2%)"). Reuse the same widget_id when updating an existing tracker so the card updates in place.
 
 Logging vs. asking (critical):
 - Strictly distinguish a LOG action from a QUERY action. A LOG records new food ("I ate X", "log my lunch"). A QUERY asks about food or macros already discussed or recorded ("how many calories were in that dinner?", "what are my macros?", "how much protein do I have left?").
@@ -244,6 +250,73 @@ TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "update_user_widget",
+            "description": (
+                "Create or update a custom sidebar tracking widget whenever the "
+                "student asks to track, compare, or log arbitrary metrics (test "
+                "scores, gym lifts, reading progress, GPA, habits, budgets). Pick "
+                "the best schema: 'list' for label/value collections, 'comparison' "
+                "for current-vs-previous with a delta, 'progress' for numeric "
+                "current-vs-target, 'stat' for a single headline value. Extract "
+                "the numbers and labels precisely; one call per widget."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "widget_type": {
+                        "type": "string",
+                        "enum": ["list", "comparison", "progress", "stat"],
+                    },
+                    "title": {
+                        "type": "string",
+                        "description": "Short widget title, e.g. 'Test Scores' or 'Bench Press'",
+                    },
+                    "widget_id": {
+                        "type": "string",
+                        "description": "Stable id to update an existing widget (e.g. 'bench_press'). Omit to derive from the title.",
+                    },
+                    "items": {
+                        "type": "array",
+                        "description": "list type only: label/value pairs",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "label": {"type": "string"},
+                                "value": {"type": "string"},
+                            },
+                            "required": ["label", "value"],
+                        },
+                    },
+                    "primary_metric": {
+                        "type": "string",
+                        "description": "comparison only: the metric being tracked",
+                    },
+                    "current": {
+                        "type": "string",
+                        "description": "comparison only, e.g. 'This Week: 85 kg'",
+                    },
+                    "previous": {
+                        "type": "string",
+                        "description": "comparison only, e.g. 'Last Week: 80 kg'",
+                    },
+                    "delta": {
+                        "type": "string",
+                        "description": "comparison only, e.g. '+5 kg (+6.2%)' — sign matters for the badge color",
+                    },
+                    "subtext": {"type": "string", "description": "comparison only: optional context line"},
+                    "current_value": {"type": "number", "description": "progress only"},
+                    "target_value": {"type": "number", "description": "progress only"},
+                    "unit": {"type": "string", "description": "progress only, e.g. 'pages'"},
+                    "value": {"type": "string", "description": "stat only, e.g. '8.9'"},
+                    "subtitle": {"type": "string", "description": "stat only, e.g. 'Target: 9.0'"},
+                },
+                "required": ["widget_type", "title"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "search_docs",
             "description": (
                 "Search the student's personal library in sandbox/docs — PDF "
@@ -301,6 +374,7 @@ class SageBrain:
             "macros": self.tracker.state(),
             "schedule": self.schedule.state(12),
             "documents": documents or [],
+            "widgets": widgets_manager.read(),
         }
 
     def _system_prompt(self, memory_block: str = "") -> str:
@@ -409,6 +483,16 @@ class SageBrain:
                 if action == "get_schedule":
                     return {"ok": True, "events": self.schedule.upcoming(10)}
                 return {"ok": False, "error": f"Unknown action: {action}"}
+
+            if name == "update_user_widget":
+                widget = widgets_manager.build_from_tool_args(args)
+                saved = widgets_manager.upsert(widget)
+                collected["widgets_touched"] = True
+                return {
+                    "ok": True,
+                    "widget": saved,
+                    "note": "Widget saved to the student's sidebar. Confirm briefly in your reply.",
+                }
 
             if name == "search_docs":
                 query = str(args.get("query", ""))
