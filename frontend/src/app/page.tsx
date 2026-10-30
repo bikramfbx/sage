@@ -894,7 +894,6 @@ export default function SAGEHome() {
   const [pendingPrompt, setPendingPrompt] = useState<string | null>(null);
   const [pendingImage, setPendingImage] = useState<File | null>(null);
   const [draft, setDraft] = useState("");
-  const [landingImage, setLandingImage] = useState<File | null>(null);
   const [agentState, setAgentState] = useState<AgentState>(EMPTY_STATE);
 
   useEffect(() => {
@@ -922,7 +921,6 @@ export default function SAGEHome() {
     setPendingPrompt(trimmed || null);
     setPendingImage(image);
     setDraft("");
-    setLandingImage(null);
     setIsStarted(true);
   }
 
@@ -966,21 +964,17 @@ export default function SAGEHome() {
                     initial={{ opacity: 0, y: 14 }}
                     animate={{ opacity: 1, y: 0 }}
                   >
-                    {landingImage && (
-                      <ImageThumb image={landingImage} onRemove={() => setLandingImage(null)} />
-                    )}
                     <div className="flex items-center gap-2">
-                      <AttachButton onPick={setLandingImage} attached={!!landingImage} />
                       <input
                         value={draft}
                         onChange={(e) => setDraft(e.target.value)}
-                        onKeyDown={(e) => e.key === "Enter" && startSession(draft, landingImage)}
-                        placeholder={landingImage ? "Add a note about this image..." : "Ask SAGE..."}
+                        onKeyDown={(e) => e.key === "Enter" && startSession(draft)}
+                        placeholder="Ask SAGE..."
                         className="h-10 flex-1 bg-transparent text-sm text-zinc-100 outline-none placeholder:text-zinc-500"
                       />
                       <button
-                        onClick={() => startSession(draft, landingImage)}
-                        disabled={!draft.trim() && !landingImage}
+                        onClick={() => startSession(draft)}
+                        disabled={!draft.trim()}
                         title="Send"
                         className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-emerald-400/90 text-[#08130d] transition-all hover:bg-emerald-300 hover:scale-105 disabled:opacity-30"
                       >
