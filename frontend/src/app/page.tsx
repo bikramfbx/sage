@@ -675,7 +675,7 @@ function DashboardApp({
               </p>
             </div>
           )}
-          <div className="mx-auto flex max-w-2xl flex-col gap-4">
+          <div className="mx-auto flex max-w-2xl flex-col gap-[22px]">
             {messages.map((m, i) => (
               <div key={i} className={m.role === "user" ? "flex justify-end" : ""}>
                 <div
@@ -746,7 +746,7 @@ function DashboardApp({
             <button
               onClick={() => send()}
               disabled={sending || !input.trim()}
-              className="rounded-xl bg-emerald-400/75 px-5 py-2.5 text-sm font-semibold text-[#08130d] backdrop-blur-md transition-colors hover:bg-emerald-300 disabled:opacity-40"
+              className="rounded-xl bg-zinc-700 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-zinc-600 disabled:opacity-40"
             >
               Send
             </button>
@@ -900,7 +900,7 @@ export default function SAGEHome() {
                         onClick={() => submitLanding(draft)}
                         disabled={!draft.trim()}
                         title="Send"
-                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-emerald-400/90 text-[#08130d] transition-all hover:bg-emerald-300 hover:scale-105 disabled:opacity-30"
+                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-zinc-700 text-white transition-all hover:bg-zinc-600 hover:scale-105 disabled:opacity-30"
                       >
                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                           <path d="M12 19V5M5 12l7-7 7 7" />
