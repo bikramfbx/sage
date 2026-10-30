@@ -3,10 +3,9 @@ import logging
 import re
 from typing import Optional
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from datetime import datetime, timedelta
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 
 from app.schemas.screen import ScreenAnalyzeOutcome, ScreenAnalyzeRequest
 from app.services.sage_brain import sage_brain
@@ -164,7 +163,7 @@ def _remember(prompt_text: str, assistant_text: str) -> None:
 
 
 @router.post("/screen/analyze", response_model=ScreenAnalyzeOutcome)
-async def screen_analyze(request: ScreenAnalyzeRequest):
+async def screen_analyze(request: Request, body: ScreenAnalyzeRequest):
     """Live Screen Copilot: analyze one captured tab frame, or answer a
     student question about the current screen (enriched with RAG)."""
     raw_tz = (request.headers.get("X-User-Timezone") or "").strip()[:64]
@@ -177,8 +176,8 @@ async def screen_analyze(request: ScreenAnalyzeRequest):
     if not tab_analyzer.vision_available():
         raise HTTPException(status_code=503, detail="vision unavailable")
     try:
-        if request.question:
-            rag_hits = sage_brain.reader.search(request.question, top_k=3)
+        if body.question:
+            rag_hits = sage_brain.reader.search(body.question, top_k=3)
             rag_block = "\n".join(
                 "- {doc}{page}: {snippet}".format(
                     doc=h["document"],
@@ -188,14 +187,14 @@ async def screen_analyze(request: ScreenAnalyzeRequest):
                 for h in rag_hits
             ) or "(no local notes matched)"
             answer = await _ask(
-                request.frame_base64,
-                request.question,
+                body.frame_base64,
+                body.question,
                 rag_block,
                 getattr(request.state, "nebius_override", None),
             )
             return answer
         return await _analyze(
-            request.frame_base64,
+            body.frame_base64,
             tzinfo,
             getattr(request.state, "nebius_override", None),
         )
