@@ -134,11 +134,15 @@ async def _perceive_upload(request: Request) -> PerceiveUploadOutcome:
     return await _process_assignment(image_bytes, prompt_text, subject_tag, verdict["source"])
 
 
-def _remember(prompt_text: str, log_line: str) -> None:
-    """Persist the perception exchange so it survives refreshes."""
-    if prompt_text:
-        sage_brain.memory.append("user", prompt_text)
-    sage_brain.memory.append("assistant", log_line)
+def _remember(prompt_text: str, assistant_text: str) -> None:
+    """Persist the perception exchange so it survives refreshes.
+
+    Both turns go into the persistent chat history: the user message
+    (prompt text, or the same 'Analyze this image' fallback the frontend
+    bubble shows) and the full rich assistant markdown response.
+    """
+    sage_brain.memory.append("user", prompt_text or "Analyze this image")
+    sage_brain.memory.append("assistant", assistant_text)
 
 
 async def _process_food(
@@ -203,11 +207,12 @@ async def _process_food(
         f"{today['calories']:.0f} / {targets['calories']:.0f} kcal, "
         f"{today['protein']:.0f} / {targets['protein']:.0f} g protein."
     )
-    _remember(prompt_text, log_line)
+    _remember(prompt_text, summary)
     return PerceiveUploadOutcome(
         status="food_logged",
         type="FOOD_MEAL",
         summary=summary,
+        reply=summary,
         macros={
             "items": analysis["items"],
             "entry": entry,
@@ -276,11 +281,30 @@ async def _process_assignment(
         f"Vision perception: saved \"{title or 'assignment capture'}\""
         f"{f' ({course})' if course else ''}{when}{dup} — indexed into your notes"
     )
-    _remember(prompt_text, log_line)
+
+    # rich markdown breakdown for the chat bubble and persistent history
+    detail_lines = [
+        f"- **Course:** {course or 'unknown'}",
+        f"- **Title:** {title or 'untitled'}",
+    ]
+    if due_date:
+        state_note = " (already on your schedule)" if event and event.get("duplicate") else " (scheduled)"
+        detail_lines.append(f"- **Due:** {due_date[:16].replace('T', ' ')}{state_note}")
+    else:
+        detail_lines.append("- **Due:** not stated — add it manually if needed")
+    captured = [f"- {ln.strip()}" for ln in text.splitlines() if ln.strip()][:8]
+    summary = (
+        "**Assignment Captured & Indexed!** 📚\n\n"
+        "**Details:**\n" + "\n".join(detail_lines) + "\n\n"
+        + ("**Content captured:**\n" + "\n".join(captured) + "\n\n" if captured else "")
+        + f"*Saved to `{note_path.name}` — searchable in chat via your notes library.*"
+    )
+    _remember(prompt_text, summary)
     return PerceiveUploadOutcome(
         status="assignment_saved",
         type="ACADEMIC_ASSIGNMENT",
-        summary=log_line,
+        summary=summary,
+        reply=summary,
         title=title,
         due_date=due_date,
         indexed=indexed,

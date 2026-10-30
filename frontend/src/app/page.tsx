@@ -294,7 +294,9 @@ function formatPerceptionReply(data: any): string {
     return lines.join("\n");
   }
   if (data?.type === "ACADEMIC_ASSIGNMENT") {
-    if (data.log_line) return data.log_line;
+    // rich markdown breakdown is built server-side (reply mirrors summary)
+    if (typeof data.reply === "string" && data.reply.trim()) return data.reply;
+    if (typeof data.summary === "string" && data.summary.trim()) return data.summary;
     const title = data.title ? ` "${data.title}"` : "";
     return `Saved assignment${title}${data.due_date ? ` — due ${data.due_date}` : ""} and indexed it into your notes.`;
   }
@@ -394,14 +396,35 @@ function DashboardApp({
       if (!r.ok) return;
       const h = await r.json();
       if (Array.isArray(h.messages)) {
-        setMessages(
-          h.messages.map(
-            (m: { role: "user" | "assistant" | "system"; content: string }) => ({
-              role: m.role,
-              content: m.content,
-            })
-          )
+        const server: ChatMsg[] = h.messages.map(
+          (m: { role: "user" | "assistant" | "system"; content: string }) => ({
+            role: m.role,
+            content: m.content,
+          })
         );
+        // MERGE, never overwrite: the history snapshot can race an
+        // in-flight perception/chat turn and would otherwise wipe the
+        // bubbles the user is already looking at
+        setMessages((prev) => {
+          if (prev.length === 0) return server;
+          const key = (m: ChatMsg) => `${m.role}|${m.content}`;
+          const serverKeys = new Set(server.map(key));
+          // snapshot already contains every local turn -> trust it
+          // wholesale (it also restores proper chronological order)
+          if (prev.every((m) => serverKeys.has(key(m)))) return server;
+          // locals carry turns the stale snapshot doesn't know about —
+          // keep them and append only unseen server turns
+          const seen = new Set(serverKeys);
+          const merged = [...prev];
+          for (const m of server) {
+            const k = key(m);
+            if (!seen.has(k)) {
+              merged.push(m);
+              seen.add(k);
+            }
+          }
+          return merged;
+        });
       }
     } catch {}
   }

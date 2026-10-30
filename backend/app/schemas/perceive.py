@@ -35,6 +35,7 @@ class PerceiveUploadOutcome(BaseModel):
     status: Literal["food_logged", "assignment_saved", "ignored", "error"]
     type: Optional[Literal["FOOD_MEAL", "ACADEMIC_ASSIGNMENT"]] = None
     summary: Optional[str] = None
+    reply: Optional[str] = None
     macros: Optional[dict] = None
     title: Optional[str] = None
     due_date: Optional[str] = None
